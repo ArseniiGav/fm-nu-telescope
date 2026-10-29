@@ -103,6 +103,10 @@ class Truth(_Arrays):
     ``x0, z0`` is the anchor point of a through-going track (the point of the line closest to the origin) or the
     vertex of a starting track or cascade; ``t0`` is the time at that point. ``energy`` is the muon energy for
     ``track`` and ``atmospheric``, the neutrino energy for ``starting`` and the cascade energy for ``cascade``.
+    The muon emits light on the segment ``x0 + s d`` with ``s_start <= s <= s_end`` (``track_length = s_end -
+    s_start``): from its entry into the generation box (``s_start = 0`` at the vertex of a starting track) to its exit
+    or to the point where it stops; ``s_start`` and ``s_end`` are NaN where no muon light is emitted (cascades, lines
+    that miss the generation box).
     """
 
     event_id: np.ndarray = _a(np.int64, "event number, unique within a data set")
@@ -121,6 +125,12 @@ class Truth(_Arrays):
     energy_cascade: np.ndarray = _a(np.float32, "energy of the vertex cascade [GeV] (0 for track, atmospheric)")
     cascade_fraction: np.ndarray = _a(np.float32, "inelasticity y of starting tracks (NaN for the other types)")
     track_length: np.ndarray = _a(np.float32, "length of the light-emitting muon segment [m] (0 for cascade)")
+    s_start: np.ndarray = _a(
+        np.float32, "start of the light-emitting muon segment along x0 + s d [m] (NaN if the muon emits no light)"
+    )
+    s_end: np.ndarray = _a(
+        np.float32, "end of the light-emitting segment along x0 + s d [m] (the stop point of a stopped muon; or NaN)"
+    )
     length_in_area: np.ndarray = _a(np.float32, "length of the emitting segment inside the instrumented area [m]")
     n_bursts: np.ndarray = _a(np.int32, "number of stochastic-loss bursts")
     energy_lost: np.ndarray = _a(np.float32, "sum of the burst energies [GeV]")
@@ -264,7 +274,8 @@ class Pulses(_Ragged):
     """Pulses of every event, sorted by (event, t): hits of a module merged within the merge window.
 
     Per module, a pulse starts at the earliest unassigned hit and takes every hit with ``t <= t_start + tau``; its
-    time is the time of the first hit, its charge the number of hits.
+    time is the time of its first hit (or the mean time of its hits with ``readout.pulse_time = "mean"``), its charge
+    the number of hits.
     """
 
     offset: np.ndarray = _a(np.int64, "offsets [n_events + 1]")
@@ -272,7 +283,7 @@ class Pulses(_Ragged):
     module: np.ndarray = _a(np.int32, "module number on the string (0 = deepest)")
     x: np.ndarray = _a(np.float32, "module position x [m]")
     z: np.ndarray = _a(np.float32, "module position z [m]")
-    t: np.ndarray = _a(np.float32, "pulse time = time of its first hit [ns]")
+    t: np.ndarray = _a(np.float32, "pulse time: first or mean hit time (readout.pulse_time) [ns]")
     charge: np.ndarray = _a(np.int32, "number of merged hits")
     n_noise: np.ndarray = _a(np.int32, "number of noise hits among them")
 
@@ -515,7 +526,7 @@ class SimData:
         )
 
     def select(self, mask: ArrayLike) -> SimData:
-        """Subset of the events: a boolean mask over the events or an array of event indices.
+        """Subset of the events: a boolean mask over the events or an array of distinct event indices (any order).
 
         The detectors are kept (``geometry_index`` stays valid); photon paths are kept for the selected events.
         """
@@ -523,6 +534,8 @@ class SimData:
         index = np.flatnonzero(sel) if sel.dtype == bool else sel.astype(np.int64).ravel()
         if sel.dtype == bool and len(sel) != len(self):
             raise ValueError(f"mask has {len(sel)} entries for {len(self)} events")
+        if len(np.unique(index)) != len(index):
+            raise ValueError("repeated event indices: every event can be selected only once (event ids stay unique)")
         truth = Truth(**{k: v[index] for k, v in self.truth.arrays().items()})
         photons = PhotonCounts(**{k: v[index] for k, v in self.photons.arrays().items()})
         paths = None

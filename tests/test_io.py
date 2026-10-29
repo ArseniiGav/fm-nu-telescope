@@ -36,6 +36,8 @@ def test_round_trip(tmp_path):
         assert f.attrs["n_geometries"] == 1
         assert f["pulses/t"].attrs["units"] == "ns"
         assert f["truth/energy"].attrs["units"] == "GeV"
+        assert f["truth/s_start"].attrs["units"] == "m"
+        assert "NaN" in f["truth/s_end"].attrs["description"]
         assert f["geometries/geometry_id"].dtype == np.dtype("S12")
         assert json.loads(f["paths"].attrs["point_types"])["DETECT"] == 2
     with pytest.raises(FileExistsError):
@@ -134,3 +136,11 @@ def test_describe_and_bad_files(tmp_path):
         f["x"] = 1
     with pytest.raises(ValueError, match="not a nutel"):
         load(other)
+
+
+def test_file_without_a_truth_field_is_refused(tmp_path):
+    path = save(synthetic_data(3, seed=5), tmp_path / "old.h5")
+    with h5py.File(path, "a") as f:
+        del f["truth/s_start"]
+    with pytest.raises(ValueError, match="no s_start; the file was written by an older version"):
+        load(path)

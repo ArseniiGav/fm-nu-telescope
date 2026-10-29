@@ -36,8 +36,8 @@ Exported names (``__all__``, sorted):
 * directions: :func:`direction_from_angle`, :func:`angle_from_zenith_azimuth`, :func:`zenith_azimuth`;
 * analysis: :func:`event_features`, :func:`image`, :data:`FEATURE_NAMES`, :data:`IMAGE_CHANNELS`;
   :func:`linefit`, :func:`linefit_events`, :class:`LineFit`, :func:`expected_arrival_time`,
-  :func:`time_residuals`, :func:`angular_error`, :func:`causal_cleaning`, :func:`energy_from_charge`,
-  :func:`fit_charge_calibration`.
+  :func:`time_residuals`, :func:`emission_coordinate`, :func:`direct_light_possible`, :func:`shadowed`,
+  :func:`angular_error`, :func:`causal_cleaning`, :func:`energy_from_charge`, :func:`fit_charge_calibration`.
 
 ``plot`` is a submodule (``from nutel.toy import plot``); it needs matplotlib, the rest of the package does not.
 """
@@ -86,11 +86,14 @@ from .reco import (
     LineFit,
     angular_error,
     causal_cleaning,
+    direct_light_possible,
+    emission_coordinate,
     energy_from_charge,
     expected_arrival_time,
     fit_charge_calibration,
     linefit,
     linefit_events,
+    shadowed,
     time_residuals,
 )
 from .simulate import DEFAULT_PHOTONS_PER_CHUNK, LEVELS, generate, resolve_device, simulate, world_box
@@ -136,7 +139,9 @@ __all__ = [
     "config_fields",
     "describe",
     "describe_presets",
+    "direct_light_possible",
     "direction_from_angle",
+    "emission_coordinate",
     "energy_from_charge",
     "event_features",
     "expected_arrival_time",
@@ -158,6 +163,7 @@ __all__ = [
     "sample_detectors",
     "sample_prior",
     "save",
+    "shadowed",
     "simulate",
     "time_residuals",
     "world_box",

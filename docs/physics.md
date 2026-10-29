@@ -39,7 +39,7 @@ from below (up-going, it crossed the Earth). A vertical slice allows only the tw
 formula is the usual three-dimensional $\mathbf{d} = -(\sin\theta \cos\phi, \sin\theta \sin\phi, \cos\theta)$ in the
 plane $y = 0$; it is the convention of IceCube
 ([references.md](references.md#7-direction-convention)). For derivations the plain angle of the direction of travel,
-$\alpha = \operatorname{atan2}(d_z, d_x) \in (-\pi, \pi]$, is simpler; the truth stores $\mathbf{d}$,
+$\alpha = \mathrm{atan2}(d_z, d_x) \in (-\pi, \pi]$, is simpler; the truth stores $\mathbf{d}$,
 $\theta_\mathrm{zen}$, $\phi_\mathrm{az}$ and $\alpha$ (`dir_x`, `dir_z`, `zenith`, `azimuth`, `angle`).
 
 ## Detector
@@ -160,7 +160,7 @@ Every event is drawn from the prior below; every range is an option.
 | range of the `uniform` model           | `inelasticity_range`            | 0.05, 0.75                       |      |
 | cascade energy (`cascade`)             | `cascade_energy_range`          | 10, $10^3$                       | GeV  |
 | atmospheric muon energy                | `atmospheric_energy_range`      | $10^2$, $10^3$                   | GeV  |
-| atmospheric zenith model               | `atmospheric_zenith`            | `depth`: $p(\cos\theta) \propto \cos\theta \, e^{K_1/\cos\theta}$; or `uniform` | |
+| atmospheric zenith model               | `atmospheric_zenith`            | `depth`: $p(\theta) \propto \cos\theta \, e^{K_1/\cos\theta}$; or `uniform` in $\theta$ | |
 | depth of the detector for `depth`      | `depth_kmwe`                    | 2.0                              | km w.e. |
 | atmospheric $\cos\theta_\mathrm{zen}$ range | `atmospheric_cos_zenith_range` | 0.1, 1                       |      |
 | fixed event parameters                 | `fixed_angle` (degrees), `fixed_vertex`, `fixed_energy`, `fixed_t0`, `fixed_inelasticity` | none | |
@@ -223,8 +223,9 @@ $P / (2\pi R_\mathrm{gen})$ = 0.80. A circle of radius $R$, for comparison, give
 $p(L) = L / \bigl(2R\sqrt{4R^2 - L^2}\bigr)$ on $(0, 2R)$ with the mean $\pi R/2$.
 
 The muon emits light from where its line enters the **generation box** (the instrumented area plus `track_margin` on
-every side, $550 \times 420$ m$^2$ by default) to where it leaves it or stops. The truth stores the length of this
-segment (`track_length`) and of its part inside the instrumented area (`length_in_area`). The track energy $E$ (the muon
+every side, $550 \times 420$ m$^2$ by default) to where it leaves it or stops. The truth stores the ends of this
+segment along the line $\mathbf{a} + s\,\mathbf{d}$ (`s_start`, `s_end`), its length (`track_length`) and the length of
+its part inside the instrumented area (`length_in_area`). The track energy $E$ (the muon
 energy where its light emission starts) is log-uniform in $[10^2, 10^4]$ GeV.
 
 ### Starting events, cascades and atmospheric muons
@@ -240,17 +241,22 @@ energy where its light emission starts) is log-uniform in $[10^2, 10^4]$ GeV.
   TeV ([references.md](references.md#4-inelasticity-of-nu_mu-cc)).
 - `cascade`: vertex and direction as for `starting`, $E$ log-uniform in $[10, 10^3]$ GeV, all light from the cascade.
 - `atmospheric`: a through-going track as `track`, but down-going only, with the zenith distribution of single muons
-  deep underground (Becherini et al.),
+  deep underground (Becherini et al.). Their intensity per unit solid angle is
+  $I(\theta_\mathrm{zen}) \propto \cos\theta_\mathrm{zen} \exp(K_1/\cos\theta_\mathrm{zen})$; the plane takes it per
+  unit of the angle itself, as for the isotropic neutrinos (uniform in $\theta_\mathrm{zen}$, not in
+  $\cos\theta_\mathrm{zen}$), so the zenith angle is drawn from
 
   ```math
-  p(\cos\theta_\mathrm{zen}) \propto \cos\theta_\mathrm{zen} \, \exp\!\left(\frac{K_1}{\cos\theta_\mathrm{zen}}\right),
+  p(\theta_\mathrm{zen}) \propto \cos\theta_\mathrm{zen} \, \exp\!\left(\frac{K_1}{\cos\theta_\mathrm{zen}}\right),
   \qquad K_1 = -0.581\,h + 0.034, \qquad 0.1 \le \cos\theta_\mathrm{zen} \le 1,
   ```
 
-  at the depth $h$ = 2 km water equivalent (median $\cos\theta_\mathrm{zen}$ = 0.83; the option
-  `atmospheric_zenith = "uniform"` draws $\cos\theta_\mathrm{zen}$ uniformly instead), $\phi_\mathrm{az} = 0$ or
-  $\pi$ with equal probability, and a softer energy range, log-uniform in $[10^2, 10^3]$ GeV. At this depth the real
-  spectrum has a median energy of about 114 GeV (vertical) and falls as $E^{-3.8}$
+  at the depth $h$ = 2 km water equivalent. The density is largest at the vertical and falls to zero towards the
+  horizon ($\theta_\mathrm{zen} \le 84.3°$); the median zenith is 22° (median $\cos\theta_\mathrm{zen}$ = 0.93). The
+  option `atmospheric_zenith = "uniform"` draws $\theta_\mathrm{zen}$ uniformly on the same range instead. The
+  azimuth is $\phi_\mathrm{az} = 0$ or $\pi$ with equal probability, and the energy range is softer, log-uniform in
+  $[10^2, 10^3]$ GeV. At this depth the real spectrum has a median energy of about 114 GeV (vertical) and falls as
+  $E^{-3.8}$
   ([references.md](references.md#5-spectra-and-training-set-conventions)).
 
 Neutrinos are generated isotropically: up-going and down-going alike. In a real telescope the Earth absorbs
@@ -307,7 +313,8 @@ wavefront of each is a straight line moving away from the track (the two fronts 
 | the muon stops below              | $E_\mathrm{stop}$     | `muon_stop_energy`          | 1                    | GeV        |
 
 $Y_t$ is calibrated so that the median event of the `full` preset in water has about 30 detected signal photons
-(16th-84th percentiles 10-101; through-going tracks 9-82 with a median of 27), as in the low-energy NuBench data
+(median 28, 16th-84th percentiles 10-100; through-going tracks 9-72 with a median of 27; 20 000 events, the 84th
+percentile of the tracks varies by about 3 between seeds), as in the low-energy NuBench data
 sets. In the plane every photon stays in the plane, which is why
 $Y_t$ is of order one photon per metre rather than the 25 000 per metre (300-500 nm) of a real muon, which emits about
 30 % more through its secondary particles ([references.md](references.md#2-muon-light-and-energy-loss)).
@@ -355,7 +362,8 @@ The default profile is the parameterisation of Rädel and Wiebusch for electroma
 whose polar-angle density $\propto (dn/d\Omega)\sin\theta$ on $[0, \pi]$ is sampled (by a tabulated inverse
 cumulative distribution) and used as the angle in the plane, with a random sign. It peaks at the Cherenkov angle
 (median 42°, 65 % within $\pm 10°$ of $\theta_c$) and has a tail to large angles (4 % backward), since the charged
-particles of a shower point in many directions. `cascade_profile = "gaussian"` uses
+particles of a shower point in many directions. The factor $\sin\theta$ is kept on purpose, unlike for the atmospheric zenith: it makes the
+fraction of the light at each polar angle that of a real cascade. `cascade_profile = "gaussian"` uses
 $\theta = \theta_c + \delta$, $\delta \sim \mathcal{N}(0, \sigma_\mathrm{cas}^2)$ instead.
 With $Y_c = \ell_\mathrm{cas} Y_t$, one GeV of cascade gives as much light as $\ell_\mathrm{cas}$ = 5 m of track. An
 electromagnetic cascade gives the light of 5.32 m of track per GeV in ice (4.84 m in water) and a hadronic one 74 %
@@ -424,9 +432,13 @@ $2r_m$ start on a piece of track of length $2r_m/\sin\theta_c$ and travel $\ell 
 \langle n_\mathrm{det} \rangle = \varepsilon \, \frac{Y_t}{2} \, \frac{2 r_m}{\sin\theta_c} \, e^{-\rho/(\lambda_a \sin\theta_c)}
 ```
 
-for a module at the perpendicular distance $\rho$, far from the ends of the segment. In the plane, the light of a
-track does not fall with distance at all: only absorption reduces it, with the attenuation length
-$\lambda_a\sin\theta_c$ in $\rho$ (or $\lambda_a$ in the photon path $\ell$).
+for a module at the perpendicular distance $\rho$. In the plane, the light of a track does not fall with distance at
+all: only absorption reduces it, with the attenuation length $\lambda_a\sin\theta_c$ in $\rho$ (or $\lambda_a$ in the
+photon path $\ell$). This holds where the light can arrive: the module must see its emission point
+$s_e = s - \rho\cot\theta_c$ on the emitting segment, $s_\mathrm{start} \le s_e \le s_\mathrm{end}$
+(`reco.direct_light_possible`), and no other module may stand on the ray in between (`reco.shadowed`). The farther a
+module is from the track, the farther back its emission point lies, so distant modules often see none of the
+track's light.
 
 **In three dimensions** the light spreads over a sphere instead of a circle: a point source gives $1/\rho^2$ and a
 track (a cone spreading over a cylinder) $1/\rho$, each times the absorption factor. In general, in $D$ dimensions a
@@ -564,7 +576,9 @@ every layout. With the `fixed_*` options the same event is seen by $K$ detectors
 
 All random numbers derive from one seed: the same seed, configuration, device type and chunking give the same file.
 Two runs with the same seed and different presets share the event parameters, which makes their differences
-sharper; such paired samples must not be pooled as if they were independent.
+sharper; such paired samples must not be pooled as if they were independent. With another layout the same seed gives
+the same directions, energies and times, but the anchor points and vertices scale with the detector's generation
+radius and instrumented area, so the events coincide only within one layout.
 
 ## What the toy leaves out
 

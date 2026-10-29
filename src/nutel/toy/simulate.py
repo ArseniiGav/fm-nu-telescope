@@ -18,6 +18,7 @@ chunking, PyTorch build and hardware.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import itertools
 import logging
@@ -36,7 +37,7 @@ import numpy as np
 import torch
 from numpy.typing import ArrayLike
 
-from .config import C_VACUUM, SimConfig
+from .config import C_VACUUM, PRESETS, SimConfig
 from .data import Bursts, Detector, Hits, Paths, PhotonCounts, PointType, Pulses, SimData, Truth
 from .events import (
     ATMOSPHERIC,
@@ -61,14 +62,23 @@ from .family import FAMILIES, DetectorFamily, sample_detectors
 from .readout import apply_jitter_and_window, merge_pulses, sample_noise
 from .transport import ModuleGrid, transport
 
-__all__ = ["DEFAULT_PHOTONS_PER_CHUNK", "LEVELS", "generate", "resolve_device", "simulate", "world_box"]
+__all__ = [
+    "DEFAULT_PHOTONS_PER_CHUNK",
+    "FAMILY_READOUT",
+    "LEVELS",
+    "family_conflicts",
+    "generate",
+    "resolve_device",
+    "simulate",
+    "world_box",
+]
 
 log = logging.getLogger(__name__)
 
 #: Default number of photons transported at once, per device type (about 150 bytes per photon).
 DEFAULT_PHOTONS_PER_CHUNK = {"cpu": 2**20, "cuda": 2**22}
 
-#: Data levels: pulses are always produced; ``"hits"`` and ``"both"`` also keep the hits.
+#: Data levels: pulses are always produced; ``"both"`` also keeps the hits (``"hits"`` is an alias of ``"both"``).
 LEVELS = ("hits", "pulses", "both")
 
 _N_FATES = len(PointType)
@@ -95,6 +105,32 @@ def resolve_device(device: str | torch.device | None = "auto") -> torch.device:
             )
         raise RuntimeError("device 'cuda' requested, but CUDA is not available (use device='cpu' or 'auto')")
     return dev
+
+
+#: Readout parameters that a detector family samples per detector (the window, merge window and pulse time are kept).
+FAMILY_READOUT = ("efficiency", "time_jitter", "noise_rate")
+
+
+def family_conflicts(config: SimConfig) -> list[str]:
+    """Return the settings of ``config`` that a detector family would replace (:func:`generate` refuses them).
+
+    A family samples the whole layout and medium and the readout parameters :data:`FAMILY_READOUT`. A configuration
+    may combine with a family if its layout and medium are the defaults (water) and its readout values are those of
+    the ladder preset with the same physics switches.
+    """
+    default = SimConfig()
+    out = ["custom_geometry"] if config.custom_geometry is not None else []
+    for part in ("layout", "medium"):
+        mine, base = getattr(config, part), getattr(default, part)
+        out += [f.name for f in dataclasses.fields(mine) if getattr(mine, f.name) != getattr(base, f.name)]
+    # compare with the preset of the same physics switches (else with every preset, the full one first)
+    candidates = [c for c in PRESETS.values() if c.physics == config.physics] or list(reversed(PRESETS.values()))
+    allowed = [tuple(getattr(c.readout, name) for name in FAMILY_READOUT) for c in candidates]
+    values = tuple(getattr(config.readout, name) for name in FAMILY_READOUT)
+    if values not in allowed:
+        nearest = min(allowed, key=lambda a: sum(x != y for x, y in zip(a, values, strict=True)))
+        out += [name for name, x, y in zip(FAMILY_READOUT, values, nearest, strict=True) if x != y]
+    return out
 
 
 def world_box(detector: Detector, config: SimConfig) -> tuple[float, float, float, float]:
@@ -137,12 +173,14 @@ def generate(
     device
         ``"auto"`` (CUDA if available, else CPU), ``"cpu"`` or ``"cuda"``.
     level
-        ``"both"`` (default) or ``"hits"``: keep hits and pulses; ``"pulses"``: pulses only.
+        ``"both"`` (default): keep hits and pulses (``"hits"`` is an alias); ``"pulses"``: pulses only.
     save_paths
         Record the paths of all photons of the first ``save_paths`` events.
     family
         Detector family (or the name of a preset, ``"default"`` or ``"tridentlike"``): sample ``n_geometries``
-        detectors (geometry, medium, readout) from it. ``None``: the single detector of ``config``.
+        detectors (geometry, medium, readout) from it. ``None``: the single detector of ``config``. With a family,
+        ``config`` keeps the default layout and medium and a preset readout (:func:`family_conflicts`); its physics,
+        emission, prior, readout window, merge window and pulse time apply to every detector.
     n_geometries
         Number of detectors K sampled from the family.
     geometry_seed
@@ -181,9 +219,15 @@ def generate(
         if not dets or not all(isinstance(d, Detector) for d in dets):
             raise TypeError("detectors must be a Detector or a non-empty sequence of Detector")
     elif family is not None:
-        fam = FAMILIES[family] if isinstance(family, str) else family
         if isinstance(family, str) and family not in FAMILIES:
             raise ValueError(f"unknown detector family {family!r}; choose from {', '.join(FAMILIES)}")
+        fam = FAMILIES[family] if isinstance(family, str) else family
+        conflicts = family_conflicts(config)
+        if conflicts:
+            raise ValueError(
+                "a detector family samples the layout, the medium and the readout efficiency, time jitter and noise "
+                f"of every detector; these settings of the configuration would be ignored: {', '.join(conflicts)}"
+            )
         dets = sample_detectors(n_geometries, fam, geometry_seed, config)
         family_info = {"name": family if isinstance(family, str) else None, "ranges": fam.to_dict()}
     else:
@@ -531,6 +575,8 @@ def _simulate(
             "energy_cascade": energy_cascade,
             "cascade_fraction": ev["cascade_fraction"],
             "track_length": track_length,
+            "s_start": np.where(track_length > 0, s_start, np.nan),
+            "s_end": np.where(track_length > 0, s_end, np.nan),
             "length_in_area": length_in_area,
             "n_bursts": np.diff(b_offset),
             "energy_lost": energy_lost,

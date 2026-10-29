@@ -83,6 +83,8 @@ def test_family_validation_and_description():
         DetectorFamily(module_radius_range=(0.3, 8.0))
     with pytest.raises(ValueError, match="unknown detector family"):
         family("hexagon")
+    with pytest.raises(ValueError, match="unknown detector family"):
+        sample_detector(0, "hexagon")
     text = family().describe()
     assert "absorption_length" in text
     assert "layout weights" in text

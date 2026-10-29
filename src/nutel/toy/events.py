@@ -12,8 +12,8 @@ The prior (:func:`sample_prior`, all ranges in :class:`~nutel.toy.config.Prior`)
                  inelasticity p(y) ~ 1 + eps (1 - y)^2 on [0, 1] (or uniform): cascade E_cas = y E_nu at the vertex,
                  muon E_mu = (1 - y) E_nu from the vertex
     cascade      vertex and direction as starting; E log-uniform
-    atmospheric  as track, but down-going: p(cos zenith) ~ cos z exp(K1(h) / cos z) (Becherini et al. 2006, depth h)
-                 or uniform in cos(zenith); azimuth 0 or pi with equal probability
+    atmospheric  as track, but down-going: p(zenith) ~ cos z exp(K1(h) / cos z) in the zenith angle z (Becherini
+                 et al. 2006, depth h; the 2-D measure) or uniform in z; azimuth 0 or pi with equal probability
 
 Muons emit light inside the generation box (instrumented area + track_margin): a through-going muon from its entry
 to its exit, a starting muon from the vertex to its exit (:func:`muon_segments`). Along the way, stochastic losses
@@ -50,7 +50,7 @@ __all__ = [
     "Photons",
     "Sources",
     "angle_from_zenith_azimuth",
-    "atmospheric_cos_zenith",
+    "atmospheric_zenith_angle",
     "box_interval",
     "direction_from_angle",
     "emit_photons",
@@ -124,21 +124,28 @@ def icecube_inelasticity(u: np.ndarray, eps: float) -> np.ndarray:
     return np.clip(1.0 - w, 0.0, 1.0)
 
 
-def atmospheric_cos_zenith(u: np.ndarray, depth_kmwe: float, bounds: tuple[float, float]) -> np.ndarray:
-    """``cos(zenith)`` of atmospheric muons at depth ``h``: ``p(c) ~ c exp(K1 / c)``, ``K1 = -0.581 h + 0.034``.
+def atmospheric_zenith_angle(u: np.ndarray, depth_kmwe: float | None, cos_bounds: tuple[float, float]) -> np.ndarray:
+    """Zenith angles [rad] of atmospheric muons from uniform numbers ``u`` (tabulated inverse CDF).
 
-    The parametrisation of the muon intensity under water of Becherini et al. (2006), ``K0 cos z exp(K1 sec z)``,
-    sampled by a tabulated inverse CDF on ``bounds``.
+    With a depth ``h`` (km w.e.): ``p(theta) ~ cos(theta) exp(K1 / cos(theta))``, ``K1 = -0.581 h + 0.034``, the
+    single-muon intensity under water of Becherini et al. (2006), ``K0 cos theta exp(K1 sec theta)``, per unit of the
+    in-plane angle ``theta`` (the two-dimensional measure, without the ``sin(theta)`` of a solid angle). With
+    ``depth_kmwe = None``: uniform in ``theta``. ``theta`` runs over ``[arccos(cos_max), arccos(cos_min)]``.
     """
-    lo, hi = bounds
-    if hi <= lo:
-        return np.full(np.shape(u), lo, dtype=np.float64)
+    lo_cos, hi_cos = cos_bounds
+    theta_lo, theta_hi = math.acos(min(hi_cos, 1.0)), math.acos(max(lo_cos, -1.0))
+    u = np.asarray(u, dtype=np.float64)
+    if theta_hi <= theta_lo:
+        return np.full(np.shape(u), theta_lo, dtype=np.float64)
+    if depth_kmwe is None:
+        return theta_lo + u * (theta_hi - theta_lo)
     k1 = -0.581 * depth_kmwe + 0.034
-    grid = np.linspace(lo, hi, 4097)
+    grid = np.linspace(theta_lo, theta_hi, 4097)
+    cos = np.cos(grid)
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        pdf = np.where(grid > 0, grid * np.exp(k1 / grid), 0.0)
+        pdf = np.where(cos > 0, cos * np.exp(k1 / cos), 0.0)
     cdf = np.concatenate([[0.0], np.cumsum(0.5 * (pdf[1:] + pdf[:-1]) * np.diff(grid))])
-    return np.interp(np.asarray(u, dtype=np.float64) * cdf[-1], cdf, grid)
+    return np.interp(u * cdf[-1], cdf, grid)
 
 
 #: Parameters (a [1/sr], b, c, d [1/sr]) of the angular profile of electromagnetic cascades (Raedel & Wiebusch 2013).
@@ -205,14 +212,11 @@ def sample_prior(
     kind = np.minimum(np.searchsorted(cumulative / cumulative[-1], u_type, side="right"), 3).astype(np.int8)
 
     # directions
-    if p.atmospheric_zenith == "depth":
-        cos_zenith = atmospheric_cos_zenith(u_cos, p.depth_kmwe, p.atmospheric_cos_zenith_range)
-    else:
-        lo, hi = p.atmospheric_cos_zenith_range
-        cos_zenith = lo + u_cos * (hi - lo)
+    depth = p.depth_kmwe if p.atmospheric_zenith == "depth" else None
+    atm_zenith = atmospheric_zenith_angle(u_cos, depth, p.atmospheric_cos_zenith_range)
     from_plus_x = u_side < 0.5
-    atm_dx = np.where(from_plus_x, -1.0, 1.0) * np.sqrt(1.0 - cos_zenith**2)
-    atm_angle = np.arctan2(-cos_zenith, atm_dx)
+    atm_dx = np.where(from_plus_x, -1.0, 1.0) * np.sin(atm_zenith)
+    atm_angle = np.arctan2(-np.cos(atm_zenith), atm_dx)
     angle = np.where(kind == ATMOSPHERIC, atm_angle, angle_iso)
     if p.fixed_angle is not None:
         angle = np.full(n, math.radians(p.fixed_angle))

@@ -18,8 +18,9 @@ its documentation and the tasks for the students.
 <p align="center">
   <img src="docs/img/event_animation.gif" width="560" alt="Animation of the Cherenkov front of a muon sweeping over the strings of the toy telescope">
   <br>
-  <em>The two Cherenkov fronts of a muon (in the plane the cone becomes two lines) sweep over the strings; every
-  module lights up when the light reaches it.</em>
+  <em>A muon (star) crosses the strings and its Cherenkov photons fly out at c/n: each line is the path of one photon,
+  the blue dots are its scatterings, absorbed photons turn grey, and a hit module grows with its charge and takes the
+  colour of its first pulse time; the crosses are noise hits over the whole 5 µs readout window.</em>
 </p>
 
 ## Roadmap

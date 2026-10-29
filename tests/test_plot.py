@@ -193,3 +193,94 @@ def test_energy_in_tev_from_1_tev():
 
     assert _format_energy(999.0) == "999 GeV"
     assert _format_energy(1040.0) == "1.04 TeV"
+
+
+def test_photon_positions_interpolation():
+    from nutel.toy.data import PointType as P
+    from nutel.toy.plot import photon_positions
+
+    # photon 0: emitted at t = 0, scattered at (10, 0) at t = 10, detected at (10, 10) at t = 20
+    # photon 1: emitted at t = 5, absorbed at (0, -10) at t = 15; photon 2: emitted at t = 0, escapes at t = 4
+    offset = [0, 3, 5, 7]
+    x = [0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 4.0]
+    z = [0.0, 0.0, 10.0, 0.0, -10.0, 0.0, 0.0]
+    t = [0.0, 10.0, 20.0, 5.0, 15.0, 0.0, 4.0]
+    kind = [P.EMIT, P.SCATTER, P.DETECT, P.EMIT, P.ABSORB, P.EMIT, P.ESCAPE]
+    before = photon_positions(offset, x, z, t, kind, -1.0)
+    np.testing.assert_array_equal(before["state"], [0, 0, 0])
+    assert np.all(np.isnan(before["x"]))
+    at5 = photon_positions(offset, x, z, t, kind, 5.0)
+    np.testing.assert_array_equal(at5["state"], [1, 1, 5])
+    np.testing.assert_allclose(at5["x"][:2], [5.0, 0.0])
+    np.testing.assert_allclose(at5["z"][:2], [0.0, 0.0])
+    at15 = photon_positions(offset, x, z, t, kind, 15.0)
+    np.testing.assert_array_equal(at15["state"], [2, 3, 5])
+    np.testing.assert_array_equal(at15["n_scatter"], [1, 0, 0])
+    np.testing.assert_array_equal(at15["index"], [1, 4, 6])  # last point reached (into the point arrays)
+    np.testing.assert_allclose(at15["x"][:2], [10.0, 0.0])
+    np.testing.assert_allclose(at15["z"][:2], [5.0, -10.0])
+    after = photon_positions(offset, x, z, t, kind, 25.0)
+    np.testing.assert_array_equal(after["state"], [4, 3, 5])
+    np.testing.assert_allclose([after["x"][0], after["z"][0]], [10.0, 10.0])
+    np.testing.assert_allclose(after["t_end"], [20.0, 15.0, 4.0])
+
+
+def test_animate_event_photons(data, tmp_path):
+    from PIL import Image
+
+    from nutel.toy.plot import _event_photons
+
+    out = animate_event(data, 0, tmp_path / "p.gif", photons=True, dt=40.0, t_range=(900.0, 2300.0), dpi=40)
+    with Image.open(out) as im:
+        assert im.n_frames >= 2
+        assert im.info.get("loop") == 0
+    out = animate_event(data, 1, tmp_path / "q.gif", photons=True, fronts=True, clock=False, n_frames=3, dpi=40)
+    assert out.exists()
+    out = animate_event(data, 0, tmp_path / "w.gif", photons=True, module_size=None, n_frames=2, dpi=40)
+    assert out.exists()  # modules at their true radius
+    out = animate_event(data, 0, tmp_path / "v.gif", fronts=False, n_frames=3, hold_frames=0, dt=100.0, dpi=40)
+    assert out.exists()  # the default (fronts) mode with the new options
+    sub = _event_photons(data, 0, max_photons=2, seed=1)
+    assert len(sub["offset"]) - 1 == 2  # the two detected photons are always kept
+    with pytest.raises(ValueError, match="no stored photon paths"):
+        animate_event(data, 5, tmp_path / "r.gif", photons=True, n_frames=2, dpi=40)
+    with pytest.raises(ValueError, match="save_paths"):
+        animate_event(synthetic_data(3, paths=0), 0, tmp_path / "s.gif", photons=True, n_frames=2, dpi=40)
+    with pytest.raises(ValueError, match="EventView"):
+        animate_event(EventView.from_data(data, 0), None, tmp_path / "t.gif", photons=True)
+    with pytest.raises(ValueError, match="dt"):
+        animate_event(data, 0, tmp_path / "u.gif", photons=True, dt=0.0)
+
+
+def test_animation_noise_hits(data, tmp_path):
+    from nutel.toy.plot import _noise_hits, _signal_only
+
+    view = EventView(
+        module_x=np.array([0.0, 10.0, 20.0]),
+        module_z=np.zeros(3),
+        radius=0.5,
+        x=np.array([0.0, 10.0, 20.0]),
+        z=np.zeros(3),
+        t=np.array([5.0, 50.0, 4000.0]),
+        charge=np.array([3.0, 2.0, 1.0]),
+        n_noise=np.array([1.0, 0.0, 1.0]),
+    )
+    signal = _signal_only(view)
+    np.testing.assert_array_equal(signal.x, [0.0, 10.0])
+    np.testing.assert_array_equal(signal.charge, [2.0, 2.0])  # the noise hit is taken out of the mixed pulse
+    noise = _noise_hits(view, None, view)
+    np.testing.assert_array_equal(noise["t"], [4000.0])  # without stored hits: the pure-noise pulses
+    hits = data.hits
+    for i in range(len(data)):
+        a, b = int(hits.offset[i]), int(hits.offset[i + 1])
+        assert len(_noise_hits(data, i, EventView.from_data(data, i))["t"]) == int(hits.is_noise[a:b].sum())
+    for photons in (False, True):
+        for include_noise in (False, True):
+            out = animate_event(
+                data, 0, tmp_path / f"n{photons}{include_noise}.gif", photons=photons, include_noise=include_noise,
+                n_frames=3, hold_frames=0, dpi=40,
+            )  # fmt: skip
+            assert out.exists()
+    last = len(data) - 1  # the synthetic noise hit is in the last event
+    assert len(_noise_hits(data, last, EventView.from_data(data, last))["t"]) == 1
+    assert animate_event(data, last, tmp_path / "noise.gif", n_frames=3, t_range=(0.0, 6000.0), dpi=40).exists()

@@ -432,9 +432,10 @@ class Prior(_Part):
     ``b ~ U(-R_gen, R_gen)`` from the origin, ``R_gen`` = half-diagonal of the instrumented area + ``impact_margin``;
     ``starting`` and ``cascade``: vertex uniform in the instrumented area + ``vertex_margin``; the inelasticity of
     starting tracks follows ``p(y) ~ 1 + eps (1 - y)^2`` on [0, 1] (``inelasticity = "icecube"``) or is uniform in
-    ``inelasticity_range``; ``atmospheric``: a down-going track with ``p(cos zenith) ~ cos z exp(K1 / cos z)``,
-    ``K1 = -0.581 h + 0.034`` at the depth ``h`` in km water equivalent (``atmospheric_zenith = "depth"``, Becherini et
-    al. 2006) or uniform (``"uniform"``), in ``atmospheric_cos_zenith_range``. Energies are log-uniform.
+    ``inelasticity_range``; ``atmospheric``: a down-going track with ``p(z) ~ cos z exp(K1 / cos z)`` in the zenith
+    angle ``z``, ``K1 = -0.581 h + 0.034`` at the depth ``h`` in km water equivalent (``atmospheric_zenith =
+    "depth"``, Becherini et al. 2006) or uniform in ``z`` (``"uniform"``), for ``cos z`` in
+    ``atmospheric_cos_zenith_range``. Energies are log-uniform.
     Muons emit light inside the generation box (instrumented area + ``track_margin``). ``fixed_*`` values replace
     the corresponding distributions (the random numbers are drawn anyway, so the other parameters do not change).
     """
@@ -487,7 +488,7 @@ class Prior(_Part):
     )
     atmospheric_zenith: str = _param(
         "depth",
-        "zenith of atmospheric muons: 'depth' (Becherini et al. at depth_kmwe) or 'uniform' in cos(zenith)",
+        "zenith angle of atmospheric muons: 'depth' (Becherini et al. at depth_kmwe) or 'uniform' in the angle",
         choices=("depth", "uniform"),
     )
     depth_kmwe: float = _param(2.0, "'depth' zenith distribution: detector depth h", "km w.e.")
@@ -709,8 +710,13 @@ class SimConfig:
         """Inverse of :meth:`to_json`."""
         return cls.from_dict(json.loads(text))
 
-    def describe(self) -> str:
-        """Human-readable description of the configuration (used by ``nutelsim presets`` and ``nutelsim info``)."""
+    def describe(self, sampled: bool = False) -> str:
+        """Human-readable description of the configuration (used by ``nutelsim presets`` and ``nutelsim info``).
+
+        With ``sampled = True`` (a data set of detectors sampled from a family) the layout, the medium and the readout
+        efficiency, jitter and noise are marked "sampled per detector" instead of the unused values of the
+        configuration.
+        """
         lay, med, r, ph, em, pr = self.layout, self.medium, self.readout, self.physics, self.emission, self.prior
         if self.custom_geometry is not None:
             g = self.custom_geometry
@@ -733,17 +739,25 @@ class SimConfig:
             types = f"only {pr.event_type}"
         else:
             types = ", ".join(f"{t} {f:g}" for t, f in zip(EVENT_TYPES, pr.type_fractions, strict=True))
+        medium_text = (
+            f"{medium_name(med)}: n = {med.refractive_index:g} "
+            f"(theta_c = {math.degrees(med.cherenkov_angle):.1f} deg); absorption {absorption}; scattering {scattering}"
+        )
+        readout = f"efficiency {r.efficiency:g}, jitter {r.time_jitter:g} ns, noise {noise}"
+        if sampled:
+            layout = "sampled per detector"
+            on_off = f"absorption {'on' if ph.absorption else 'off'}; scattering {'on' if ph.scattering else 'off'}"
+            medium_text = f"sampled per detector; {on_off}"
+            readout = "efficiency, jitter and noise sampled per detector"
         return "\n".join(
             [
                 f"layout:     {layout}",
-                f"medium:     {medium_name(med)}: n = {med.refractive_index:g} "
-                f"(theta_c = {math.degrees(med.cherenkov_angle):.1f} deg); absorption {absorption}; "
-                f"scattering {scattering}",
+                f"medium:     {medium_text}",
                 f"emission:   Y_t = {em.track_yield:g} /m, Y_c = {em.cascade_yield:g} /GeV ({em.photon_statistics}); "
                 f"track spread {em.cherenkov_spread:g} deg; cascade profile {cascade}",
                 f"muon:       continuous loss a = {em.energy_loss_a:g} GeV/m, stops below {em.muon_stop_energy:g} GeV; "
                 f"stochastic losses {stochastic}",
-                f"readout:    efficiency {r.efficiency:g}, jitter {r.time_jitter:g} ns, noise {noise}, "
+                f"readout:    {readout}, "
                 f"window [{r.window[0]:g}, {r.window[1]:g}) ns, merge {r.merge_window:g} ns, pulse time {r.pulse_time}",
                 f"prior:      {types}; t0 in [{pr.t0_range[0]:g}, {pr.t0_range[1]:g}] ns",
                 f"transport:  at most {ph.max_steps} steps per photon; world margin "

@@ -125,6 +125,8 @@ def synthetic_data(
             "energy_cascade": np.where(types == 2, energy, np.where(types == 1, 0.3 * energy, 0.0)),
             "cascade_fraction": np.where(types == 1, 0.3, np.nan),
             "track_length": np.where(track_like, 500.0, 0.0),
+            "s_start": np.where(track_like, np.where(types == 1, 0.0, -250.0), np.nan),
+            "s_end": np.where(track_like, np.where(types == 1, 500.0, 250.0), np.nan),
             "length_in_area": np.where(track_like, 300.0, 0.0),
             "n_bursts": np.where(track_like, 1, 0),
             "energy_lost": np.where(track_like, 5.0, 0.0),

@@ -5,7 +5,8 @@ Two data levels, as the ``merged_photons`` and ``pulses`` of NuBench::
     hits     every detected photon (time + Gaussian jitter, inside the readout window) and every noise hit
              (Poisson(noise_rate x window length) per module and event, times uniform in the window)
     pulses   per module, time-ordered greedy merging: a pulse starts at the earliest unassigned hit and takes every
-             hit with t <= t_start + merge_window; its time is the first time, its charge the number of hits
+             hit with t <= t_start + merge_window; its time is the first hit time (or the mean hit time with
+             pulse_time = "mean"), its charge the number of hits
 
 Noise can also be added to stored data as an augmentation (:func:`add_noise`): train with noise, test without (or
 the other way round), as in the NuBench protocol.

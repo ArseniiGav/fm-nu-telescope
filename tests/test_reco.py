@@ -8,6 +8,7 @@ from nutel.toy.config import C_VACUUM
 from nutel.toy.reco import (
     angular_error,
     causal_cleaning,
+    direct_light_possible,
     direction_angle,
     emission_coordinate,
     energy_from_charge,
@@ -16,6 +17,7 @@ from nutel.toy.reco import (
     fit_charge_calibration,
     linefit,
     linefit_events,
+    shadowed,
     time_residuals_arrays,
     track_coordinates,
     unit_vector,
@@ -262,3 +264,25 @@ def test_time_residuals_of_a_data_set():
     assert hits.shape == (len(data.hits),)
     with pytest.raises(ValueError, match="no hits level"):
         time_residuals(synthetic_data(2, hits=False), level="hits")
+
+
+def test_direct_light_needs_the_emission_point_on_the_segment():
+    n = 1.33
+    cot = 1 / math.sqrt(n**2 - 1)
+    modules = np.array([[0.0, 20.0], [0.0, -200.0], [150.0, 30.0], [0.0, 5.0]])
+    s_e = emission_coordinate(modules, [0.0, 0.0], [1.0, 0.0], n)
+    np.testing.assert_allclose(s_e, [-20 * cot, -200 * cot, 150 - 30 * cot, -5 * cot])
+    ok = direct_light_possible(modules, [0.0, 0.0], [1.0, 0.0], n, -100.0, 100.0)
+    np.testing.assert_array_equal(ok, [True, False, False, True])
+    # starting track: the segment starts at the vertex; per-event ends broadcast; NaN (no muon light) gives False
+    ok = direct_light_possible(modules, [0.0, 0.0], [1.0, 0.0], n, np.array([0.0, -1e3, np.nan, 0.0]), 1e3)
+    np.testing.assert_array_equal(ok, [False, True, False, False])
+
+
+def test_shadowed():
+    modules = np.array([[10.0, 0.0], [20.0, 0.0], [20.0, 3.0], [30.0, 2.4], [40.0, 0.0]])
+    out = shadowed([0.0, 0.0], modules, modules, 0.5)
+    np.testing.assert_array_equal(out, [False, True, False, True, True])  # (30, 2.4): a partial shadow, 0.8 m off
+    np.testing.assert_array_equal(shadowed([0.0, 0.0], modules, modules, 0.5, margin=1.0), [0, 1, 0, 0, 1])
+    starts = np.array([[0.0, 0.0], [20.0, -10.0]])[:, None, :]  # per-event emission points, [2, 1, 2] x [5, 2]
+    assert shadowed(starts, modules[None], modules, 0.5).shape == (2, 5)

@@ -35,7 +35,7 @@ folder outside it. Data files are not committed: `data/` and `*.h5` are ignored 
 | symbol | meaning |
 |--------|---------|
 | $\mathbf{d} = (d_x, d_z)$ | direction of travel (`data.truth.dir_x`, `data.truth.dir_z`) |
-| $\alpha = \operatorname{atan2}(d_z, d_x)$ | direction angle (`data.truth.angle`, rad) |
+| $\alpha = \mathrm{atan2}(d_z, d_x)$ | direction angle (`data.truth.angle`, rad) |
 | $\theta_\mathrm{zen}$, $\phi_\mathrm{az}$ | zenith (0 = down-going) and azimuth (0 or $\pi$) of where the particle comes from (`zenith`, `azimuth`) |
 | $\mathbf{a} = (x_0, z_0)$, $t_0$ | anchor point of a track (closest point to the origin) or vertex, and the time there (`x0`, `z0`, `t0`) |
 | $b$ | signed impact parameter of a track, $\mathbf{a} = b\,(-d_z, d_x)$ |
@@ -45,6 +45,7 @@ folder outside it. Data files are not committed: `data/` and `*.h5` are ignored 
 | $n$, $\theta_c$, $c_n$ | refractive index, Cherenkov angle ($\cos\theta_c = 1/n$), speed of light in the medium $c/n$ (`data.detector(i).medium`) |
 | $\lambda_a$, $\lambda_\mathrm{eff}$, $g$ | absorption length, effective scattering length, scattering anisotropy |
 | $s$, $\rho$ | coordinate along the track of the foot of the perpendicular from a module, and the module's distance from the track |
+| $s_e$; $s_\mathrm{start}$, $s_\mathrm{end}$ | coordinate along the track where the direct light seen by a module is emitted (`emission_coordinate`); ends of the emitting segment (`s_start`, `s_end`, $L = s_\mathrm{end} - s_\mathrm{start}$) |
 | $t_\mathrm{dir}$ | arrival time of direct Cherenkov light (`expected_arrival_time`) |
 | $t_\mathrm{res} = t - t_\mathrm{dir}$ | time residual of a pulse or hit (`time_residuals`) |
 | $q$, $Q$ | charge of a pulse (number of merged hits), total charge of an event (`total_charge` of `event_features`) |
@@ -113,15 +114,19 @@ for name in ("straight", "absorb", "scatter", "full"):
 
 **T0.4** The NuBench dictionary. Make a table: for every field of the toy (truth, hits, pulses, geometry, detector
 parameters), the corresponding field or quantity of NuBench, its units and convention, or "none". Use
-[docs/nubench.md](docs/nubench.md) and the paper ([arXiv:2511.13111](https://arxiv.org/abs/2511.13111)). Which toy
-quantities have no NuBench counterpart (and the other way round)? Where do the conventions differ (the pulse time, the
-charge, the noise, the angles)? The toy's zenith and azimuth say where the particle comes from; NuBench's describe
-its direction of travel. Write down how the angles convert, and check it on NuBench data: for a few hundred
-high-energy tracks of the smallest data set, does the time-ordered axis of the pulses (a LineFit) point along the
+[docs/nubench.md](docs/nubench.md) and the paper ([arXiv:2511.13111](https://arxiv.org/abs/2511.13111)); no download
+is needed. Which toy quantities have no NuBench counterpart (and the other way round)? Where do the conventions differ
+(the pulse time, the charge, the noise, the angles)? The toy's zenith and azimuth say where the particle comes from;
+NuBench's describe its direction of travel. Write down how the angles convert.
+*Optional (about 30 minutes more):* check the conversion on real NuBench events. One test chunk of Triangle (25 000
+events, 55 MB; the download recipe and `pip install pyarrow` are in
+[docs/nubench.md](docs/nubench.md#one-chunk-without-the-full-archive)) is enough: for a few hundred high-energy CC
+events with many pulses, does the time-ordered axis of the pulses (a LineFit in three dimensions) point along the
 direction built from `initial_state_zenith` and `initial_state_azimuth`, or against it?
 
 **Deliverables:** the summary line of the tests and one event display (T0.1, T0.2); a plot of the simulation time
-against $N$ per preset and medium (T0.3); the dictionary as a table (T0.4).
+against $N$ per preset and medium (T0.3); the dictionary as a table (T0.4) and, if you did it, the fraction of
+NuBench events whose LineFit axis agrees with the converted direction.
 
 **Hints**
 - `nutelsim generate` prints the time of the simulation at the end; it is also stored in every file as
@@ -136,12 +141,13 @@ With the installation working, make the data of the next tasks. All files go to 
 every path in this document is relative to the repository root (a notebook in `notebooks/` reads the same file as
 `../data/t1_scatter.h5`). `python examples/make_task_data.py` runs exactly these commands on any operating system (it
 keeps files that already exist; `--overwrite` makes them again, `--dry-run` only prints them). Together they take
-about 15 minutes on 8 cores of a server CPU (longer on a laptop) and 0.5 GB of disk. On a cluster, run them in a job
+about 25 minutes on 8 cores of a server CPU (longer on a laptop) and 0.5 GB of disk. On a cluster, run them in a job
 or an interactive session, not on the login node (see
-[examples/cluster](examples/cluster/README.md)). Files made with the same seed share their events (directions,
-positions, energies, times), which makes comparisons between presets or detectors sharper; such paired samples are
-made for differences, not for pooling. The light of T1 and T2 is simulated without noise (presets `straight`, `absorb`
-and `scatter`); the noise and the full preset enter with T3.3.
+[examples/cluster](examples/cluster/README.md)). Files made with the same seed share the directions, energies and
+times of their events, which makes comparisons between presets or detectors sharper; the positions (anchor points and
+vertices) scale with the size of the detector, so they are shared only between files of the same layout. Such paired
+samples are made for differences, not for pooling. The light of T1 and T2 is simulated without noise (presets
+`straight`, `absorb` and `scatter`); the noise and the full preset enter with T3.3.
 
 ```bash
 # T1, T2.3-T2.6: all event types, absorption and scattering, no noise
@@ -149,8 +155,11 @@ nutelsim generate --preset scatter -n 50000 --seed 11 -o data/t1_scatter.h5
 # T2.1-T2.2: straight light and absorption, exact Cherenkov angle
 nutelsim generate --preset straight --event-type track --cherenkov-spread 0 -n 2000 --seed 21 -o data/t2_straight_track.h5
 nutelsim generate --preset absorb --event-type track --cherenkov-spread 0 -n 2000 --seed 21 -o data/t2_absorb_track.h5
-nutelsim generate --preset straight --event-type cascade --fixed-vertex 0 0 --fixed-energy 1000 -n 2000 --seed 22 -o data/t2_straight_cascade.h5
-nutelsim generate --preset absorb --event-type cascade --fixed-vertex 0 0 --fixed-energy 1000 -n 2000 --seed 22 -o data/t2_absorb_cascade.h5
+nutelsim generate --preset straight --event-type cascade --fixed-vertex 3.7 -2.9 --fixed-energy 1000 -n 2000 --seed 22 -o data/t2_straight_cascade.h5
+nutelsim generate --preset absorb --event-type cascade --fixed-vertex 3.7 -2.9 --fixed-energy 1000 -n 2000 --seed 22 -o data/t2_absorb_cascade.h5
+# T2.3: four decades of energy, tracks and cascades (the 100 TeV end has 10^5-10^6 photons per event)
+nutelsim generate --preset scatter --event-type track --track-energy-range 10 100000 -n 2000 --seed 23 -o data/t2_track_he.h5
+nutelsim generate --preset scatter --event-type cascade --cascade-energy-range 10 100000 -n 2000 --seed 24 -o data/t2_cascade_he.h5
 # T3: the physics ladder in water and ice, the same events everywhere
 nutelsim generate --preset straight --medium water -n 20000 --seed 31 -o data/t3_straight_water.h5
 nutelsim generate --preset absorb --medium water -n 20000 --seed 31 -o data/t3_absorb_water.h5
@@ -166,11 +175,13 @@ nutelsim noise data/t3_scatter_water.h5 --rate 50000 --seed 33 -o data/t3_scatte
 # T3.4-T3.5: tracks with and without stochastic losses
 nutelsim generate --event-type track -n 20000 --seed 35 -o data/t3_track.h5
 nutelsim generate --event-type track --no-stochastic -n 20000 --seed 35 -o data/t3_track_nostochastic.h5
+nutelsim generate --event-type track --track-energy-range 100 100000 -n 5000 --seed 36 -o data/t3_track_he.h5
 # T4: events with photon paths, a noise-only readout, one event in several layouts and media
 nutelsim generate -n 100 --seed 41 --save-paths 10 -o data/t4_events.h5
 nutelsim generate --track-yield 0 -n 10 --seed 42 -o data/t4_noise_only.h5
 nutelsim generate --preset scatter --medium water --event-type track --fixed-angle -60 --fixed-vertex 0 0 --fixed-energy 1000 --fixed-t0 1500 -n 1 --seed 43 --save-paths 1 -o data/t4_paths_water.h5
 nutelsim generate --preset scatter --medium ice --event-type track --fixed-angle -60 --fixed-vertex 0 0 --fixed-energy 1000 --fixed-t0 1500 -n 1 --seed 43 --save-paths 1 -o data/t4_paths_ice.h5
+nutelsim generate --event-type track --fixed-angle -60 --fixed-vertex 0 0 --fixed-energy 1000 --fixed-t0 1500 -n 1 --seed 45 -o data/t4_same_default.h5
 nutelsim generate --layout core --event-type track --fixed-angle -60 --fixed-vertex 0 0 --fixed-energy 1000 --fixed-t0 1500 -n 1 --seed 45 -o data/t4_same_core.h5
 nutelsim generate --layout irregular --event-type track --fixed-angle -60 --fixed-vertex 0 0 --fixed-energy 1000 --fixed-t0 1500 -n 1 --seed 45 -o data/t4_same_irregular.h5
 nutelsim generate --medium ice --event-type track --fixed-angle -60 --fixed-vertex 0 0 --fixed-energy 1000 --fixed-t0 1500 -n 1 --seed 45 -o data/t4_same_ice.h5
@@ -249,6 +260,9 @@ top (T1.1); the acceptance or effective width against direction and energy (T1.3
 **Hints**
 - The truth of `data/t1_scatter.h5` has everything; select a type with `data.truth.type == 0` (track) and so on, or
   `data.select(mask)`. The impact parameter is $b = x_0 (-d_z) + z_0 d_x$.
+- Some low-energy muons run out of energy and stop before they leave the detector (`data.truth.stopped`); their
+  `length_in_area` is shorter than the chord. Use the tracks with `stopped == False` for the chord-length comparison
+  (`track_length` is the length of the whole emitting segment, inside the generation box).
 - The number of pulses per event is `data.photons.n_pulses` (or `np.diff(data.pulses.offset)`).
 - For quantities against $E$, use logarithmic bins and plot the fraction in each bin with its binomial error
   $\sqrt{f(1-f)/N}$.
@@ -261,7 +275,7 @@ top (T1.1); the acceptance or effective width against direction and energy (T1.3
 [^weights]: The weight of an event is the ratio of the wanted density to the injected one,
     $w \propto E^{-2} / p_\mathrm{inj}(E)$. The effective number of events is $(\sum w)^2 / \sum w^2$.
 
-## T2 Light and the detector response (3 to 4 hours)
+## T2 Light and the detector response (4 to 5 hours)
 
 **Goal:** understand where and when the Cherenkov light arrives, how much of it there is, and the event as a set of
 pulses.
@@ -273,15 +287,21 @@ hit module, computed with your own code and with `expected_arrival_time`. Explai
 remains (the module is a disc of radius 0.5 m). Why does only one of the two rays reach a given module?
 
 **T2.2** Light versus distance. From `data/t2_straight_cascade.h5` and `data/t2_absorb_cascade.h5` (cascades of 1 TeV
-at the centre), plot the mean number of photons per module against the distance $\rho$ from the vertex; from the
-two track files, against the perpendicular distance from the track. Derive the expected laws for a point and a line
-source in two dimensions, with and without absorption[^distance], fit them, and recover $\lambda_a$. Plot the light of
-the cascades against the angle between the cascade axis and the direction to the module: where is the maximum? What
-changes in three dimensions?
+at the vertex (3.7, -2.9) m, near the centre of the detector), plot the mean number of photons per module against the
+distance $\rho$ from the vertex; from the two track files, against the perpendicular distance from the track. Derive
+the expected laws for a point and a line source in two dimensions, with and without absorption[^distance], fit them,
+and recover $\lambda_a$. Modules are opaque: a module behind another one on the same ray gets no direct light. Plot
+the light of the cascades against the angle between the cascade axis and the direction to the module: where is the
+maximum? What changes in three dimensions?
 
 **T2.3** Hits and charge. On `data/t1_scatter.h5`: the number of pulses, the number of hit modules and the total charge
 $Q$ against the energy, for every event type. The charge of a pulse: what is its distribution, and why is it mostly 1?
 When are charges above 1 frequent?
+Then over four decades: in `data/t2_track_he.h5` and `data/t2_cascade_he.h5` the energies are log-uniform between
+10 GeV and 100 TeV. Plot $Q$ against $E$ for both on log axes. For cascades the slope is 1 at every energy. For tracks
+the light is flat at low energy and grows above a critical energy: find it, and relate it to the energy loss of the
+muon, $-\mathrm{d}E/\mathrm{d}x = a + bE$ (at which energy do the stochastic losses equal the ionisation loss?). What
+happens to tracks below about 50 GeV, and why does the 100 TeV end take so much longer to simulate?
 
 **T2.4** The event as a set. Compute the hand-made features of every event with `event_features` (number of hits,
 pulses, modules and strings, $Q$, first time and duration, the charge-weighted centre and its extent, the time-ordered
@@ -318,6 +338,14 @@ of T2.1 and T2.2 in a few lines.
 - In T2.2, "photons per module" means hits per module per event, averaged over events; count modules without light as
   zero. With absorption only, $\exp(-\ell/\lambda_a)$ depends on the photon path $\ell$, which for a track is not
   $\rho$.
+- In T2.2 the muon emits light only on its segment, from `data.truth.s_start` to `data.truth.s_end` along
+  $\mathbf{a} + s\,\mathbf{d}$: keep only the module-event pairs whose Cherenkov emission point $s_e$ lies on it
+  (`direct_light_possible`, with `emission_coordinate` for $s_e$). The farther a module is from the track, the farther
+  back along the track its light starts, so far modules often lie beyond the reach of the segment: this, not the
+  distance law, is why the light of a finite track seems to fall with distance in two dimensions.
+- Shadowed modules (behind another one as seen from the emission point or the vertex, fully or in part): drop these
+  pairs too (`shadowed`), for the cascades and the tracks. The same selections apply when you compare with your
+  prediction in T3.2.
 
 [^arrival]: Write the time at which light emitted at the coordinate $s_e$ along the track reaches the module, and find
     the $s_e$ that makes it earliest (Fermat's principle). Which angle does the earliest photon make with the track?
@@ -325,7 +353,7 @@ of T2.1 and T2.2 in a few lines.
 [^distance]: Count how many of the photons emitted into a small angle hit a disc of diameter $2r_m$ at the distance
     $\rho$. For a track, which piece of the track sends light that hits the module, and how long is it?
 
-## T3 Switch the physics on step by step (about 3 hours)
+## T3 Switch the physics on step by step (about 4 hours)
 
 **Goal:** see what every optical process and every readout effect does to the data, in water and in ice, and how
 simple estimators cope.
@@ -377,7 +405,10 @@ Why does the noise ruin LineFit in water, and why much less in ice?
 loss stays): the burst signatures in the light along a track (`data.bursts`), $Q$ against the muon energy with and
 without bursts, and the deposited energy (`energy_lost`) as a lower bound of the muon energy. Which tracks stop inside
 the generation box (`data.truth.stopped`), and how does their light differ? Build a $dE/dx$ proxy (charge per metre
-of track in the instrumented area) and show how well it follows $E$.
+of track in the instrumented area) and show how well it follows $E$. Then on `data/t3_track_he.h5` (muons from
+100 GeV to 100 TeV, `full` preset): the fraction of the detected light that comes from bursts against $E$, and the
+$dE/dx$ proxy against $E$ on log axes. Over which range of $E$ is the energy of a through-going track measurable at
+all, and with what resolution?
 
 **Deliverables:** for T3.1 and T3.2 the quantities of all presets and both media on shared axes; for T3.3 the cleaning
 efficiency against the slack; for T3.4 the bias and the resolution of both estimators; for T3.5 the proxy against $E$.
@@ -427,7 +458,8 @@ nutelsim animate data/t4_paths_water.h5 -i 0 -o T4.4_front.gif
 ```
 
 **T4.5** The same event in other detectors: the files `t4_same_*` hold one track with the same direction, anchor,
-time and energy in the default line, a dense core, an irregular layout, ice and six sampled detectors. Show them side
+time and energy in the default line (`t4_same_default.h5`), a dense core, an irregular layout, ice and six sampled
+detectors (`t4_same_core.h5`, `t4_same_irregular.h5`, `t4_same_ice.h5`, `t4_same_family.h5`). Show them side
 by side with the same colour scale. Which differences come from the layout and which from the medium?
 
 **Deliverables:** one display per question; for T4.4 a GIF or MP4.
@@ -494,7 +526,9 @@ for k, detector in enumerate(data.detectors):
 
 **Hints**
 - T5.1: compare the variance of $Q$ with its mean. Which source of fluctuations is gone with fixed photon numbers?
-- T5.3 and T5.4: change one thing at a time; the files of one question share their seed, so the tracks are the same.
+- T5.3 and T5.4: change one thing at a time. The files of one question share their seed: in T5.4 the tracks are the
+  same; in T5.3 they share directions, energies and times, but the anchor points scale with the generation radius of
+  each layout (compare effective widths, not event by event).
 - In water every event has about 24 noise hits: clean the pulses (T3.3) before LineFit, and say how you cleaned.
 - T5.5: the angular error alone does not answer the question; count the atmospheric muons whose reconstructed zenith
   is above 90°.

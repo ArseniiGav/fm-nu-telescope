@@ -107,11 +107,34 @@ def test_full_small_is_consistent(full_small):
     np.testing.assert_allclose(t.angle, np.arctan2(t.dir_z, t.dir_x), atol=1e-6)
 
 
+def test_segment_ends_in_the_truth(full_small):
+    t = full_small.truth
+    emits = t.track_length > 0
+    assert np.all(np.isnan(t.s_start[~emits]) & np.isnan(t.s_end[~emits]))
+    assert np.all(np.isnan(t.s_start[t.type == 2]))
+    np.testing.assert_allclose((t.s_end - t.s_start)[emits], t.track_length[emits], atol=1e-3)
+    np.testing.assert_array_equal(t.s_start[(t.type == 1) & emits], 0.0)
+    # through-going muons that did not stop enter and leave on the edge of the generation box (area + 100 m)
+    x_min, x_max, z_min, z_max = full_small.geometry(0).bounds
+    line = emits & ((t.type == 0) | (t.type == 3)) & ~t.stopped
+    for s in (t.s_start[line], t.s_end[line]):
+        x, z = t.x0[line] + s * t.dir_x[line], t.z0[line] + s * t.dir_z[line]
+        edge = np.minimum.reduce(
+            [np.abs(x - x_min + 100), np.abs(x - x_max - 100), np.abs(z - z_min + 100), np.abs(z - z_max - 100)]
+        )
+        assert np.all(edge < 1e-2)
+    # every burst lies on the segment
+    ev = full_small.bursts.event_index()
+    s_burst = (full_small.bursts.x - t.x0[ev]) * t.dir_x[ev] + (full_small.bursts.z - t.z0[ev]) * t.dir_z[ev]
+    assert np.all((s_burst >= t.s_start[ev] - 1e-2) & (s_burst <= t.s_end[ev] + 1e-2))
+
+
 def test_muons_stop_with_continuous_losses():
     data = generate(300, config=preset("absorb", event_type="track", fixed_energy=30.0), seed=2, device="cpu")
     t = data.truth
     assert np.all(t.stopped)
     np.testing.assert_allclose(t.track_length, (30.0 - 1.0) / 0.25, rtol=1e-5)
+    np.testing.assert_allclose(t.s_end - t.s_start, (30.0 - 1.0) / 0.25, rtol=1e-5)  # ends at the stop point
     high = generate(50, config=preset("absorb", event_type="track", fixed_energy=1e4), seed=2, device="cpu")
     assert not np.any(high.truth.stopped)
     none = generate(
@@ -259,6 +282,8 @@ def test_select_event_and_views(full_small):
         full_small.event(300)
     reordered = full_small.select(np.array([5, 1]))
     np.testing.assert_array_equal(reordered.truth.event_id, [5, 1])
+    with pytest.raises(ValueError, match="repeated event indices"):
+        full_small.select(np.array([0, 0, 1]))
     assert "300 events" in repr(full_small)
 
 
@@ -294,6 +319,24 @@ def test_same_event_in_several_detectors():
         assert np.ptp(getattr(data.truth, name)) == 0
     assert len(set(data.photons.n_detected.tolist())) > 1  # different detectors see different light
     assert hits_on_own_geometry(data)
+
+
+def test_family_refuses_settings_it_would_ignore():
+    from nutel.toy.simulate import family_conflicts
+
+    assert family_conflicts(preset("full")) == []
+    assert family_conflicts(preset("straight", event_type="track", merge_window=5.0)) == []
+    assert family_conflicts(preset("full", medium="ice")) == [
+        "refractive_index",
+        "absorption_length",
+        "scattering_length_eff",
+        "background_rate",
+    ]
+    assert family_conflicts(preset("full", noise_rate=0.0, layout="core")) == ["layout", "noise_rate"]
+    with pytest.raises(ValueError, match="would be ignored: noise_rate"):
+        generate(4, config=preset("full", noise_rate=0.0), family="default", n_geometries=2, device="cpu")
+    with pytest.raises(ValueError, match="unknown detector family 'nope'"):
+        generate(4, family="nope", n_geometries=2, device="cpu")
 
 
 def test_explicit_detectors_and_uneven_split():

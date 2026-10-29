@@ -143,9 +143,14 @@ FAMILIES: dict[str, DetectorFamily] = {
 
 def family(name: str = "default", **overrides: Any) -> DetectorFamily:
     """Return a family preset by name, optionally with ranges changed."""
+    fam = _named(name)
+    return dataclasses.replace(fam, **overrides) if overrides else fam
+
+
+def _named(name: str) -> DetectorFamily:
     if name not in FAMILIES:
         raise ValueError(f"unknown detector family {name!r}; choose from {', '.join(FAMILIES)}")
-    return dataclasses.replace(FAMILIES[name], **overrides) if overrides else FAMILIES[name]
+    return FAMILIES[name]
 
 
 def _uniform(rng: np.random.Generator, bounds: tuple[float, float]) -> float:
@@ -193,7 +198,7 @@ def sample_detector(
     -------
     Detector
     """
-    fam = FAMILIES[family] if isinstance(family, str) else family
+    fam = _named(family) if isinstance(family, str) else family
     rng = np.random.default_rng(rng) if not isinstance(rng, np.random.Generator) else rng
     base = config or SimConfig()
     weights = np.asarray(fam.layout_weights, dtype=np.float64)

@@ -4,7 +4,8 @@
 * :func:`event_display`: one event, hit modules filled (marker area proportional to the charge, colour = first pulse
   time), the true track or cascade and optionally the LineFit overlaid;
 * :func:`photon_paths`: the stored photon paths of an event, coloured by their fate (direct, scattered, absorbed);
-* :func:`animate_event`: a GIF of the Cherenkov front sweeping over the strings;
+* :func:`animate_event`: a GIF of the Cherenkov front sweeping over the strings, or of the photons in flight
+  (:func:`photon_positions` interpolates the stored photon paths in time);
 * :func:`gallery`: event displays in a grid of panels; :func:`draw_family`: sampled detector layouts in a grid.
 
 Colours come from :data:`palette` (the Okabe-Ito colours, distinguishable with colour-vision deficiencies) and the
@@ -40,6 +41,7 @@ __all__ = [
     "gallery",
     "palette",
     "photon_paths",
+    "photon_positions",
 ]
 
 #: Colour-vision-deficiency-safe colours (Okabe & Ito) and the roles they play in the displays.
@@ -153,7 +155,7 @@ class EventView:
         truth = {name: float(getattr(data.truth, name)[i]) for name in truth_names if hasattr(data.truth, name)}
         detector = data.detector(i)
         geometry = detector.geometry
-        stop = _stop_point(data, i, geometry)
+        stop = _stop_point(data, i)
         if stop is not None:
             truth["x_stop"], truth["z_stop"] = stop
         n_geometries = len(data.geometries)
@@ -590,20 +592,41 @@ def animate_event(
     dpi: int = 80,
     figsize: tuple[float, float] = (6.4, 4.8),
     t_range: tuple[float, float] | None = None,
+    dt: float | None = None,
+    photons: bool = False,
+    fronts: bool | None = None,
+    max_photons: int | None = 1000,
+    seed: int = 0,
+    clock: bool = True,
+    legend_loc: str = "upper right",
+    module_size: float | None = 4.0,
+    include_noise: bool = False,
     c: float = C_VACUUM,
 ) -> Path:
-    """Write a GIF of the Cherenkov front of an event sweeping over the strings.
+    """Write a GIF of an event: the Cherenkov fronts sweeping over the strings, or the photons themselves.
 
-    Each frame at time ``t`` shows the muon position ``a + (t - t0) c d``, the two fronts of its Cherenkov light (in
-    two dimensions the cone is two straight lines from the muon backwards, the envelope of the light emitted at
-    ``theta_c`` since the muon entered the view or left the vertex), the circular front of the cascade light
-    (radius ``(t - t0) c / n``) for cascades and starting tracks, and the modules whose first pulse has arrived,
-    coloured by its time. Late (scattered) light and noise appear when they are recorded.
+    Default (``photons=False``): each frame at time ``t`` shows the muon position ``a + (t - t0) c d``, the two
+    fronts of its Cherenkov light (in two dimensions the cone is two straight lines from the muon backwards, the
+    envelope of the light emitted at ``theta_c`` since the muon entered the view or left the vertex), the circular
+    front of the cascade light (radius ``(t - t0) c / n``) for cascades and starting tracks, and the modules whose
+    first pulse has arrived, coloured by its time. Late (scattered) light and noise appear when they are recorded.
+
+    ``photons=True``: the stored photon paths of the event (``data.paths``, written with ``save_paths``) are drawn
+    as lines that grow from the emission point to the current position of each photon (linear interpolation in time
+    between the points of its path, :func:`photon_positions`): orange while in flight and after detection, thin grey
+    once absorbed (in the medium or by a module) or escaped, with round markers at the scattering points already
+    passed. As in the default mode, a module lights up when its first pulse arrives: a marker whose area is
+    proportional to the charge recorded so far and whose colour is the first pulse time (colour bar), over the
+    enlarged grey discs of the unlit modules; the two Cherenkov fronts are drawn thin and semi-transparent, the muon
+    is a star moving along its track (a thin line), and a header shows the time and the counters of detected,
+    absorbed, escaped and in-flight photons. The legend and the colour bar sit below the axes. All frames share one
+    colour palette, so unchanged pixels stay identical.
 
     Parameters
     ----------
     data
-        A :class:`~nutel.toy.data.SimData` (with ``i``) or an :class:`EventView` (``i`` = None).
+        A :class:`~nutel.toy.data.SimData` (with ``i``) or an :class:`EventView` (``i`` = None; not with
+        ``photons=True``).
     i
         Event index.
     path
@@ -615,10 +638,33 @@ def animate_event(
     hold_frames
         Frames that show the final state.
     dpi, figsize
-        Resolution and size of the frames.
+        Resolution and size of the frames (with ``photons=True`` the height follows from the width and the view).
     t_range
         Time span ``(t_start, t_end)`` [ns]; default: from the moment the light source enters the view to the time
         the direct light has reached every module (or the median pulse time, if later).
+    dt
+        Time step per frame [ns]; if given, it replaces ``n_frames`` (frames at ``t_start, t_start + dt, ...``).
+    photons
+        Draw the photons of the stored paths (raises ``ValueError`` if the event has none).
+    fronts
+        Draw the light fronts (the two lines of the track light, the circle of the cascade light); default: on.
+    max_photons
+        With ``photons=True``: draw at most this many photons, all detected ones plus a random subset of the others
+        (``None`` = all).
+    seed
+        Seed of the random subset of photons.
+    clock
+        Show the time stamp ``t = ... ns``.
+    legend_loc
+        Location of the legend without photons (a matplotlib ``loc``; ``"none"``: no legend).
+    module_size
+        Radius [m] at which the modules are drawn: modules enlarged for visibility (the true radius, about 0.5 m, is
+        a dot at the scale of the array); ``None`` = the true radius. Lit modules are never drawn smaller.
+    include_noise
+        Count the noise hits in the size and colour of the lit-module markers. Default ``False``: the markers show
+        the signal only and every noise hit is drawn as a cross on its module when it occurs (it stays visible), so
+        that signal and noise are seen apart; the noise hits are counted in the header ("noise N"). The noise hits
+        come from ``data.hits`` (``is_noise``) when the hits are stored, else from the pure-noise pulses.
     c
         Speed of light in vacuum [m/ns].
 
@@ -627,16 +673,154 @@ def animate_event(
     pathlib.Path
         The file written.
     """
+    if photons and isinstance(data, EventView):
+        raise ValueError("photons=True needs a SimData with stored photon paths, not an EventView")
+    if dt is not None and not dt > 0:
+        raise ValueError(f"dt must be positive, got {dt}")
+    view = _view(data, i, "pulses")
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    show_fronts = True if fronts is None else fronts
+    noise = _noise_hits(data, i, view)
+    signal = view if include_noise else _signal_only(view)
+    if photons:
+        flight = _event_photons(data, int(i), max_photons, seed)  # type: ignore[arg-type]
+        _animate_photons(
+            view,
+            signal,
+            noise,
+            flight,
+            path,
+            fps=fps,
+            n_frames=n_frames,
+            hold_frames=hold_frames,
+            dpi=dpi,
+            width=figsize[0],
+            t_range=t_range,
+            dt=dt,
+            fronts=show_fronts,
+            clock=clock,
+            module_size=module_size,
+            c=c,
+        )
+        return path
+
     plt = _pyplot()
     from matplotlib import animation
     from matplotlib.colors import Normalize
 
-    view = _view(data, i, "pulses")
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi, layout="constrained")
     draw_geometry(ax, view, label=None)
     xlim, zlim = ax.get_xlim(), ax.get_ylim()
+    visual_radius = view.radius if module_size is None else float(module_size)
+    _module_discs(ax, view.module_x, view.module_z, visual_radius, facecolors="0.78", edgecolors="none", zorder=1.5)
+    hit = signal.modules_hit()
+    sweep = _sweep(view, xlim, zlim, t_range, dt, n_frames, c)
+    t_start, t_end = float(sweep.times[0]), float(sweep.times[-1])
+    times = np.concatenate([sweep.times, np.full(hold_frames, t_end)])
+    norm = Normalize(t_start, t_end)
+    q_max = float(hit["charge"].max()) if len(hit["charge"]) else 1.0
+    floor = {"area": 6.0}  # smallest marker area [points^2], set once the layout is fixed
+    markers = ax.scatter([], [], s=[], c=[], cmap=TIME_CMAP, norm=norm, edgecolors="black", linewidths=0.4, zorder=3)
+    bar = fig.colorbar(markers, ax=ax, fraction=0.046, pad=0.03)
+    bar.set_label("first pulse time [ns]")
+    front_lines, circle = _front_artists(ax, sweep, show_fronts, lw=1.5, alpha=1.0)
+    (track_line,) = ax.plot([], [], color=palette["truth"], lw=1.2, zorder=2.5)
+    (muon,) = ax.plot([], [], "o", color=palette["truth"], ms=5, zorder=4)
+    if sweep.has_cascade:
+        ax.plot(*sweep.anchor, marker="*", color=palette["truth"], mec="black", mew=0.4, ms=10, zorder=4, ls="none")
+    proxies = []
+    if show_fronts:
+        proxies.append(ax.plot([], [], color=palette["sky_blue"], lw=1.5, label="light front (direct)")[0])
+    if sweep.has_track:
+        proxies.append(ax.plot([], [], "o-", color=palette["truth"], ms=4, lw=1.2, label="muon (true)")[0])
+    if sweep.has_cascade:
+        proxies.append(ax.plot([], [], "*", color=palette["truth"], mec="black", mew=0.4, ms=8, label="vertex")[0])
+    noise_marks = _noise_artist(ax)
+    if len(noise["t"]):
+        proxies.append(_noise_handle())
+    if legend_loc != "none" and proxies:
+        ax.legend(handles=proxies, loc=legend_loc, fontsize="x-small", framealpha=0.85)
+    stamp = ax.text(0.02, 0.97, "", transform=ax.transAxes, va="top", fontsize="small")
+    ax.set_title(view.title(), fontsize="medium")
+
+    def update(frame: int) -> list[Any]:
+        t = float(times[frame])
+        arrived = hit["t_first"] <= t
+        markers.set_offsets(np.stack([hit["x"][arrived], hit["z"][arrived]], axis=1))
+        markers.set_sizes(np.maximum(250.0 * hit["charge"][arrived] / q_max, floor["area"]))
+        markers.set_array(hit["t_first"][arrived])
+        n_noise = _update_noise(noise_marks, noise, t)
+        if clock:
+            stamp.set_text(f"t = {t:.0f} ns" + (f"   noise {n_noise}" if len(noise["t"]) else ""))
+        tip = sweep.muon_tip(t)
+        if tip is not None:
+            track_line.set_data(*np.stack([sweep.track_start, tip], axis=1))
+            muon.set_data([tip[0]], [tip[1]])
+        sweep.update_fronts(front_lines, circle, t)
+        return [markers, stamp, track_line, muon, circle, *front_lines]
+
+    ax.set_xlim(xlim)
+    ax.set_ylim(zlim)
+    fig.canvas.draw()
+    fig.set_layout_engine("none")  # the layout of the first frame is kept: much faster
+    # a lit module is never drawn smaller than the (enlarged) disc of an unlit one
+    points_per_metre = ax.get_window_extent().width * 72.0 / fig.dpi / (xlim[1] - xlim[0])
+    floor["area"] = max(6.0, (2.0 * visual_radius * points_per_metre) ** 2)
+    anim = animation.FuncAnimation(fig, update, frames=len(times), blit=False)
+    anim.save(path, writer=animation.PillowWriter(fps=fps), dpi=dpi)
+    plt.close(fig)
+    return path
+
+
+@dataclass(frozen=True)
+class _Sweep:
+    """Kinematics of the light source of an animation: muon position, fronts and the frame times."""
+
+    times: np.ndarray
+    anchor: np.ndarray
+    d: np.ndarray
+    t0: float
+    s_start: float
+    speed: float
+    rays: tuple[np.ndarray, np.ndarray]
+    has_track: bool
+    has_cascade: bool
+    c: float
+
+    @property
+    def track_start(self) -> np.ndarray:
+        return self.anchor + self.s_start * self.d
+
+    def muon_tip(self, t: float) -> np.ndarray | None:
+        """Muon position at time ``t`` (``None`` before it enters the view or for a cascade)."""
+        if not self.has_track:
+            return None
+        s_mu = (t - self.t0) * self.c
+        return self.anchor + s_mu * self.d if s_mu > self.s_start else None
+
+    def update_fronts(self, lines: Sequence[Any], circle: Any, t: float) -> None:
+        """Move the two track fronts (lines from the muon backwards) and the cascade front (circle)."""
+        tip = self.muon_tip(t)
+        if tip is not None:
+            for line, u in zip(lines, self.rays, strict=False):
+                tail = self.track_start + (t - self.t0 - self.s_start / self.c) * self.speed * u
+                line.set_data([tip[0], tail[0]], [tip[1], tail[1]])
+        if circle is not None and self.has_cascade and t > self.t0:
+            r = (t - self.t0) * self.speed
+            phi = np.linspace(0, 2 * np.pi, 181)
+            circle.set_data(self.anchor[0] + r * np.cos(phi), self.anchor[1] + r * np.sin(phi))
+
+
+def _sweep(
+    view: EventView,
+    xlim: Sequence[float],
+    zlim: Sequence[float],
+    t_range: tuple[float, float] | None,
+    dt: float | None,
+    n_frames: int,
+    c: float,
+) -> _Sweep:
     hit = view.modules_hit()
     tr = view.truth
     kind = int(tr.get("type", 0))
@@ -647,7 +831,6 @@ def animate_event(
     n = view.n
     speed = c / (view.n_group or n)  # of the light in the medium
     has_track = kind != 2
-    has_cascade = kind in (1, 2)
     s_enter, s_exit = _chord(anchor, d, xlim, zlim)
     s_start = 0.0 if kind == 1 else s_enter
     if t_range is None:
@@ -660,59 +843,378 @@ def animate_event(
             t_end = max(t_end, float(np.median(hit["t_first"])))
     else:
         t_start, t_end = t_range
-    norm = Normalize(t_start, t_end)
-    q_max = float(hit["charge"].max()) if len(hit["charge"]) else 1.0
-    markers = ax.scatter([], [], s=[], c=[], cmap=TIME_CMAP, norm=norm, edgecolors="black", linewidths=0.4, zorder=3)
-    bar = fig.colorbar(markers, ax=ax, fraction=0.046, pad=0.03)
-    bar.set_label("first pulse time [ns]")
+    times = np.arange(t_start, t_end + 0.5 * dt, dt) if dt is not None else np.linspace(t_start, t_end, n_frames)
     theta_c = math.acos(1.0 / n) if n > 1 else 0.0
-    rays = [unit_vector(math.atan2(d[1], d[0]) + sign * theta_c) for sign in (1.0, -1.0)]
-    fronts = [ax.plot([], [], color=palette["sky_blue"], lw=1.5, zorder=2)[0] for _ in rays]
-    (track_line,) = ax.plot([], [], color=palette["truth"], lw=1.2, zorder=2.5)
-    (muon,) = ax.plot([], [], "o", color=palette["truth"], ms=5, zorder=4)
-    (circle,) = ax.plot([], [], color=palette["sky_blue"], lw=1.5, zorder=2)
-    if has_cascade:
-        ax.plot(*anchor, marker="*", color=palette["truth"], mec="black", mew=0.4, ms=10, zorder=4, ls="none")
-    proxies = [ax.plot([], [], color=palette["sky_blue"], lw=1.5, label="light front (direct)")[0]]
-    if has_track:
-        proxies.append(ax.plot([], [], "o-", color=palette["truth"], ms=4, lw=1.2, label="muon (true)")[0])
-    if has_cascade:
-        proxies.append(ax.plot([], [], "*", color=palette["truth"], mec="black", mew=0.4, ms=8, label="vertex")[0])
-    ax.legend(handles=proxies, loc="upper right", fontsize="x-small", framealpha=0.85)
-    clock = ax.text(0.02, 0.97, "", transform=ax.transAxes, va="top", fontsize="small")
-    ax.set_title(view.title(), fontsize="medium")
-    times = np.concatenate([np.linspace(t_start, t_end, n_frames), np.full(hold_frames, t_end)])
-    phi = np.linspace(0, 2 * np.pi, 181)
+    alpha = math.atan2(d[1], d[0])
+    rays = (unit_vector(alpha + theta_c), unit_vector(alpha - theta_c))
+    return _Sweep(times, anchor, d, t0, s_start, speed, rays, has_track, kind in (1, 2), c)
 
-    def update(frame: int) -> list[Any]:
-        t = float(times[frame])
-        arrived = hit["t_first"] <= t
-        markers.set_offsets(np.stack([hit["x"][arrived], hit["z"][arrived]], axis=1))
-        markers.set_sizes(np.maximum(250.0 * hit["charge"][arrived] / q_max, 6.0))
-        markers.set_array(hit["t_first"][arrived])
-        clock.set_text(f"t = {t:.0f} ns")
-        if has_track:
-            s_mu = (t - t0) * c
-            if s_mu > s_start:
-                tip = anchor + s_mu * d
-                track_line.set_data(*np.stack([anchor + s_start * d, tip], axis=1))
-                muon.set_data([tip[0]], [tip[1]])
-                for line, u in zip(fronts, rays, strict=True):
-                    tail = anchor + s_start * d + (t - t0 - s_start / c) * speed * u
-                    line.set_data([tip[0], tail[0]], [tip[1], tail[1]])
-        if has_cascade and t > t0:
-            r = (t - t0) * speed
-            circle.set_data(anchor[0] + r * np.cos(phi), anchor[1] + r * np.sin(phi))
-        return [markers, clock, track_line, muon, circle, *fronts]
 
+def _front_artists(ax: Axes, sweep: _Sweep, show: bool, *, lw: float, alpha: float) -> tuple[list[Any], Any]:
+    if not show:
+        return [], None
+    style: dict[str, Any] = {"color": palette["sky_blue"], "lw": lw, "alpha": alpha, "zorder": 2}
+    lines = [ax.plot([], [], **style)[0] for _ in sweep.rays] if sweep.has_track else []
+    (circle,) = ax.plot([], [], **style)
+    return lines, circle
+
+
+def _noise_hits(data: Any, i: int | None, view: EventView) -> dict[str, np.ndarray]:
+    """Noise hits of the event (``x``, ``z``, ``t``): from the stored hits, else from the pure-noise pulses."""
+    hits = None if isinstance(data, EventView) else getattr(data, "hits", None)
+    if hits is not None and i is not None and hasattr(hits, "is_noise"):
+        a, b = int(hits.offset[i]), int(hits.offset[i + 1])
+        sel = np.asarray(hits.is_noise[a:b], dtype=bool)
+        return {name: np.asarray(getattr(hits, name)[a:b], dtype=np.float64)[sel] for name in ("x", "z", "t")}
+    if view.n_noise is None:
+        return {"x": np.zeros(0), "z": np.zeros(0), "t": np.zeros(0)}
+    sel = view.n_noise >= view.charge
+    return {"x": view.x[sel], "z": view.z[sel], "t": view.t[sel]}
+
+
+def _signal_only(view: EventView) -> EventView:
+    """Return the view without noise: pure-noise pulses dropped, noise hits taken out of the mixed ones."""
+    if view.n_noise is None:
+        return view
+    import dataclasses
+
+    keep = view.n_noise < view.charge
+    sub = _subset(view, keep)
+    assert sub.n_noise is not None
+    return dataclasses.replace(sub, charge=sub.charge - sub.n_noise, n_noise=np.zeros_like(sub.n_noise))
+
+
+def _noise_artist(ax: Axes) -> Any:
+    return ax.scatter([], [], marker="x", s=26, c=palette["noise"], linewidths=1.1, zorder=4.8)
+
+
+def _noise_handle() -> Any:
+    from matplotlib.lines import Line2D
+
+    return Line2D([], [], ls="none", marker="x", ms=5, mew=1.1, color=palette["noise"], label="noise hit")
+
+
+def _update_noise(artist: Any, noise: Mapping[str, np.ndarray], t: float) -> int:
+    """Show the noise hits up to time ``t``; return their number."""
+    seen = noise["t"] <= t
+    artist.set_offsets(np.stack([noise["x"][seen], noise["z"][seen]], axis=1))
+    return int(seen.sum())
+
+
+def _module_discs(ax: Axes, x: np.ndarray, z: np.ndarray, radius: float, **style: Any) -> Any:
+    """Modules as discs of ``radius`` metres (data units), e.g. enlarged for visibility in the animations."""
+    from matplotlib.collections import EllipseCollection
+
+    discs = EllipseCollection(
+        widths=np.full(len(x), 2 * radius),
+        heights=np.full(len(x), 2 * radius),
+        angles=np.zeros(len(x)),
+        units="xy",
+        offsets=np.stack([x, z], axis=1) if len(x) else np.zeros((0, 2)),
+        offset_transform=ax.transData,
+        **style,
+    )
+    ax.add_collection(discs)
+    return discs
+
+
+def _animate_photons(
+    view: EventView,
+    signal: EventView,
+    noise: Mapping[str, np.ndarray],
+    flight: Mapping[str, np.ndarray],
+    path: Path,
+    *,
+    fps: int,
+    n_frames: int,
+    hold_frames: int,
+    dpi: int,
+    width: float,
+    t_range: tuple[float, float] | None,
+    dt: float | None,
+    fronts: bool,
+    clock: bool,
+    module_size: float | None,
+    c: float,
+) -> None:
+    """Photon mode of :func:`animate_event`: growing photon paths, module counters, header, legend below."""
+    plt = _pyplot()
+    from matplotlib.collections import LineCollection
+    from matplotlib.colors import Normalize
+    from matplotlib.lines import Line2D
+
+    from .data import PointType
+
+    # fixed layout (nothing may move between frames): header, axes with the true aspect, legend and colour bar below
+    left, right, header, below = 0.62, 0.12, 0.62, 1.05  # inches
+    mx, mz, radius = view.module_x, view.module_z, view.radius
+    span = max(float(np.ptp(mx)), float(np.ptp(mz)), 4 * radius, 1.0)
+    pad = 0.06 * span + radius
+    xlim = (float(mx.min()) - pad, float(mx.max()) + pad)
+    zlim = (float(mz.min()) - pad, float(mz.max()) + pad)
+    ax_w = width - left - right
+    ax_h = ax_w * (zlim[1] - zlim[0]) / (xlim[1] - xlim[0])
+    height = header + ax_h + below
+    fig = plt.figure(figsize=(width, height), dpi=dpi, layout="none")
+    ax = fig.add_axes((left / width, below / height, ax_w / width, ax_h / height))
+    draw_geometry(ax, view, label=None, set_limits=False)
     ax.set_xlim(xlim)
     ax.set_ylim(zlim)
-    fig.canvas.draw()
-    fig.set_layout_engine("none")  # the layout of the first frame is kept: much faster
-    anim = animation.FuncAnimation(fig, update, frames=len(times), blit=False)
-    anim.save(path, writer=animation.PillowWriter(fps=fps), dpi=dpi)
+    ax.set_aspect("equal", adjustable="box")
+    ax.xaxis.labelpad = 1
+
+    sweep = _sweep(view, xlim, zlim, t_range, dt, n_frames, c)
+    times = np.concatenate([sweep.times, np.full(hold_frames, sweep.times[-1])])
+
+    offset = np.asarray(flight["offset"])
+    px, pz, pt, pk = flight["x"], flight["z"], flight["t"], flight["kind"]
+    points = np.stack([px, pz], axis=1)
+    first, last = offset[:-1], offset[1:] - 1
+    is_scatter = pk == PointType.SCATTER
+    # lit modules as in the fronts mode: area = charge of the pulses so far, colour = first pulse time of the module
+    hit = signal.modules_hit()
+    row = {(float(a), float(b)): k for k, (a, b) in enumerate(zip(hit["x"], hit["z"], strict=True))}
+    pulse_module = np.array(
+        [row[(float(a), float(b))] for a, b in zip(signal.x, signal.z, strict=True)], dtype=np.int64
+    )
+    q_max = float(hit["charge"].max()) if len(hit["charge"]) else 1.0
+    # colour range of the signal (not the whole time span, which may be the full readout window)
+    if len(hit["t_first"]) > 1 and np.ptp(hit["t_first"]) > 0:
+        t_norm = Normalize(float(hit["t_first"].min()), float(hit["t_first"].max()))
+    else:
+        t_norm = Normalize(float(sweep.times[0]), float(sweep.times[-1]))
+    visual_radius = radius if module_size is None else float(module_size)
+    points_per_metre = ax_w * 72.0 / (xlim[1] - xlim[0])
+    area_floor = max(6.0, (2.0 * visual_radius * points_per_metre) ** 2)
+
+    orange, grey = palette["orange"], palette["absorbed"]
+    dead = LineCollection([], colors=grey, linewidths=0.5, alpha=0.45, zorder=2)
+    alive = LineCollection([], colors=orange, linewidths=0.8, alpha=0.9, zorder=3)
+    ax.add_collection(dead)
+    ax.add_collection(alive)
+    (heads,) = ax.plot([], [], ls="none", marker="o", ms=1.8, color=orange, zorder=5)
+    (scat,) = ax.plot([], [], ls="none", marker="o", ms=1.6, color=palette["blue"], alpha=0.8, zorder=4)
+    _module_discs(ax, mx, mz, visual_radius, facecolors="0.78", edgecolors="none", zorder=1.5)
+    markers = ax.scatter(
+        [], [], s=[], c=[], cmap=TIME_CMAP, norm=t_norm, edgecolors="black", linewidths=0.4, zorder=4.5
+    )
+    if sweep.has_track:
+        ax.plot(
+            *np.stack([sweep.track_start, sweep.track_start + 4 * span * sweep.d], axis=1),
+            color=palette["truth"],
+            lw=0.7,
+            zorder=5.5,
+        )
+    (muon,) = ax.plot([], [], ls="none", marker="*", ms=9, color=palette["truth"], mec="black", mew=0.4, zorder=7)
+    if sweep.has_cascade:
+        ax.plot(*sweep.anchor, marker="*", color=palette["truth"], mec="black", mew=0.4, ms=10, zorder=7, ls="none")
+    front_lines, circle = _front_artists(ax, sweep, fronts, lw=1.0, alpha=0.6)
+
+    y_title, y_head = 1 - 0.17 / height, 1 - 0.45 / height
+    fig.text(0.5, y_title, view.title(), ha="center", va="center", fontsize="medium")
+    stamp = fig.text(left / width, y_head, "", ha="left", va="center", fontsize="large")
+    counter = fig.text(1 - right / width, y_head, "", ha="right", va="center", fontsize="small", color="0.25")
+    handles = [
+        Line2D([], [], color=orange, lw=1.5, label="photon in flight / detected"),
+        Line2D([], [], color=grey, lw=1.0, label="photon absorbed / escaped"),
+        Line2D([], [], ls="none", marker="o", ms=3, color=palette["blue"], label="scattering"),
+    ]
+    noise_marks = _noise_artist(ax)
+    if len(noise["t"]):
+        handles.append(_noise_handle())
+    if sweep.has_track or sweep.has_cascade:
+        handles.append(
+            Line2D(
+                [],
+                [],
+                color=palette["truth"],
+                lw=0.8,
+                marker="*",
+                ms=8,
+                mec="black",
+                mew=0.4,
+                label="muon (true track)" if sweep.has_track else "vertex",
+            )
+        )
+    if fronts:
+        handles.append(Line2D([], [], color=palette["sky_blue"], lw=1.0, label="light front (direct)"))
+    fig.legend(
+        handles=handles,
+        loc="lower left",
+        bbox_to_anchor=(0.01, 0.005),
+        fontsize="x-small",
+        ncol=1,
+        frameon=False,
+        handlelength=1.6,
+        borderaxespad=0.2,
+        labelspacing=0.3,
+    )
+    cax = fig.add_axes((0.6, 0.2 / height, 1 - 0.6 - right / width, 0.09 / height))
+    bar = fig.colorbar(markers, cax=cax, orientation="horizontal")
+    bar.set_label("first pulse time [ns]", fontsize="x-small", labelpad=2)
+    cax.xaxis.set_label_position("top")
+    cax.tick_params(labelsize="x-small", length=2)
+
+    def draw(t: float) -> None:
+        pos = photon_positions(offset, px, pz, pt, pk, t)
+        state, j = pos["state"], pos["index"]
+        live, gone = [], []
+        for k in np.flatnonzero(state > 0):
+            if state[k] in (1, 2):
+                live.append(np.vstack([points[first[k] : j[k] + 1], [pos["x"][k], pos["z"][k]]]))
+            elif state[k] == 4:
+                live.append(points[first[k] : last[k] + 1])
+            else:
+                gone.append(points[first[k] : last[k] + 1])
+        alive.set_segments(live)
+        dead.set_segments(gone)
+        flying = (state == 1) | (state == 2)
+        heads.set_data(pos["x"][flying], pos["z"][flying])
+        passed = is_scatter & (pt <= t)
+        scat.set_data(px[passed], pz[passed])
+        done = state == 4
+        n_noise = _update_noise(noise_marks, noise, t)
+        arrived = signal.t <= t
+        charge = np.bincount(pulse_module[arrived], signal.charge[arrived], minlength=len(hit["x"]))
+        lit = charge > 0
+        markers.set_offsets(np.stack([hit["x"][lit], hit["z"][lit]], axis=1))
+        markers.set_sizes(np.maximum(250.0 * charge[lit] / q_max, area_floor))
+        markers.set_array(hit["t_first"][lit])
+        tip = sweep.muon_tip(t)
+        muon.set_data([tip[0]] if tip is not None else [], [tip[1]] if tip is not None else [])
+        sweep.update_fronts(front_lines, circle, t)
+        if clock:
+            stamp.set_text(f"t = {t:.0f} ns")
+        counter.set_text(
+            f"detected {int(done.sum())}   absorbed {int((state == 3).sum())}   escaped {int((state == 5).sum())}"
+            f"   in flight {int(flying.sum())}" + (f"   noise {n_noise}" if len(noise["t"]) else "")
+        )
+
+    _write_gif(fig, draw, times, path, fps)
     plt.close(fig)
-    return path
+
+
+def _write_gif(fig: Any, draw: Any, times: np.ndarray, path: Path, fps: int, colors: int = 192) -> None:
+    """Render every frame and write a looping GIF with one shared palette (no dithering): small, stable colours."""
+    from PIL import Image
+
+    def render(t: float) -> Any:
+        draw(float(t))
+        fig.canvas.draw()
+        rgba = np.asarray(fig.canvas.buffer_rgba())
+        return Image.fromarray(np.ascontiguousarray(rgba[..., :3]))
+
+    picks = np.unique(np.linspace(0, len(times) - 1, 6).round().astype(int))
+    sample = [render(times[k]) for k in picks]
+    montage = Image.new("RGB", (sample[0].width, sample[0].height * len(sample)))
+    for k, im in enumerate(sample):
+        montage.paste(im, (0, k * im.height))
+    shared = montage.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    frames = [render(t).quantize(palette=shared, dither=Image.Dither.NONE) for t in times]
+    duration = round(1000 / fps)
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=duration, loop=0, disposal=1)
+
+
+def photon_positions(
+    offset: ArrayLike, x: ArrayLike, z: ArrayLike, t: ArrayLike, kind: ArrayLike, time: float
+) -> dict[str, np.ndarray]:
+    """Positions and states of photons at one time, from their paths (linear interpolation in time).
+
+    Parameters
+    ----------
+    offset
+        Path ``k`` has the points ``offset[k]:offset[k + 1]`` (at least one point each), shape ``[n_paths + 1]``.
+    x, z, t, kind
+        Points of the paths: position [m], time [ns] (non-decreasing within a path) and
+        :class:`~nutel.toy.data.PointType` code; the first point is the emission, the last one the fate.
+    time
+        Time [ns].
+
+    Returns
+    -------
+    dict of str to numpy.ndarray
+        ``x``, ``z``: position (the last point once the path has ended; NaN before the emission); ``state``:
+        0 not yet emitted, 1 in flight before its first scattering, 2 in flight after it, 3 absorbed (in the medium
+        or by a module), 4 detected, 5 escaped or lost; ``index``: index (into the point arrays) of the last point
+        already reached; ``n_scatter``: scatterings so far; ``t_end``: time of the last point of each path.
+    """
+    offset = np.asarray(offset, dtype=np.int64)
+    x = np.asarray(x, dtype=np.float64)
+    z = np.asarray(z, dtype=np.float64)
+    t = np.asarray(t, dtype=np.float64)
+    kind = np.asarray(kind)
+    first, last = offset[:-1], offset[1:] - 1
+    if np.any(last < first):
+        raise ValueError("every path needs at least one point")
+    from .data import PointType
+
+    reached = (t <= time).astype(np.int64)
+    counts = np.add.reduceat(reached, first) if len(first) else np.zeros(0, dtype=np.int64)
+    j = first + np.maximum(counts - 1, 0)  # last point already reached
+    is_scatter = (kind == PointType.SCATTER).astype(np.int64)
+    cum = np.concatenate([[0], np.cumsum(is_scatter)])
+    n_scatter = np.where(counts > 0, cum[j + 1] - cum[first], 0)
+    ended = j >= last
+    k = np.minimum(j + 1, last)
+    span = t[k] - t[j]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        w = np.where(ended | (span <= 0), 0.0, (time - t[j]) / span)
+    w = np.clip(w, 0.0, 1.0)
+    px = x[j] + w * (x[k] - x[j])
+    pz = z[j] + w * (z[k] - z[j])
+    fate = kind[last]
+    state = np.where(n_scatter > 0, 2, 1)
+    absorbed = np.isin(fate, [PointType.ABSORB, PointType.ABSORB_MODULE])
+    state = np.where(ended & absorbed, 3, state)
+    state = np.where(ended & (fate == PointType.DETECT), 4, state)
+    state = np.where(ended & np.isin(fate, [PointType.ESCAPE, PointType.LOST]), 5, state)
+    not_yet = counts == 0
+    state = np.where(not_yet, 0, state)
+    px = np.where(not_yet, np.nan, px)
+    pz = np.where(not_yet, np.nan, pz)
+    return {
+        "x": px,
+        "z": pz,
+        "state": state.astype(np.int8),
+        "index": j,
+        "n_scatter": n_scatter,
+        "t_end": t[last],
+    }
+
+
+def _event_photons(data: Any, i: int, max_photons: int | None, seed: int) -> dict[str, np.ndarray]:
+    """Return the stored paths of event ``i`` (all detected photons plus a random subset of the others), flat."""
+    from .data import PointType
+
+    paths = getattr(data, "paths", None)
+    if paths is None:
+        raise ValueError(
+            "photons=True needs stored photon paths: generate with save_paths K / --save-paths K "
+            "(paths are kept for the first K events)"
+        )
+    event_id = int(np.asarray(data.truth.event_id)[i])
+    index = paths.of_event(event_id)
+    if len(index) == 0:
+        raise ValueError(
+            f"no stored photon paths for event {i} (event id {event_id}); paths are stored for the first "
+            "save_paths events only"
+        )
+    if max_photons is not None and len(index) > max_photons:
+        detected = np.asarray(paths.fate)[index] == PointType.DETECT
+        others = index[~detected]
+        budget = max(0, max_photons - int(detected.sum()))
+        chosen = np.random.default_rng(seed).choice(others, size=min(budget, len(others)), replace=False)
+        index = np.sort(np.concatenate([index[detected], chosen]))
+    keep = np.zeros(len(paths), dtype=bool)
+    keep[index] = True
+    sub = paths.select_paths(keep)
+    return {
+        "offset": np.asarray(sub.offset),
+        "x": np.asarray(sub.x, dtype=np.float64),
+        "z": np.asarray(sub.z, dtype=np.float64),
+        "t": np.asarray(sub.t, dtype=np.float64),
+        "kind": np.asarray(sub.kind),
+    }
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -873,21 +1375,14 @@ def _chord(anchor: np.ndarray, d: np.ndarray, xlim: Sequence[float], zlim: Seque
     return (lo, hi) if lo <= hi else (0.0, 0.0)
 
 
-def _stop_point(data: Any, i: int, geometry: Any) -> tuple[float, float] | None:
+def _stop_point(data: Any, i: int) -> tuple[float, float] | None:
     """Point where the muon of event ``i`` stopped (end of its light-emitting segment), or ``None``."""
     truth = data.truth
     if not bool(np.asarray(getattr(truth, "stopped", np.zeros(len(truth.event_id), bool)))[i]):
         return None
-    kind = int(truth.type[i])
     p = np.array([float(truth.x0[i]), float(truth.z0[i])])
     d = np.array([float(truth.dir_x[i]), float(truth.dir_z[i])])
-    s_start = 0.0
-    if kind in (0, 3):  # through-going: the segment starts where the line enters the generation box
-        config = getattr(data, "config", None)
-        margin = float(config.prior.track_margin) if config is not None else 100.0
-        x_min, x_max, z_min, z_max = geometry.bounds
-        s_start, _ = _chord(p, d, (x_min - margin, x_max + margin), (z_min - margin, z_max + margin))
-    end = p + (s_start + float(truth.track_length[i])) * d
+    end = p + float(truth.s_end[i]) * d
     return float(end[0]), float(end[1])
 
 

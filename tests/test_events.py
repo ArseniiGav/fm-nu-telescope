@@ -15,7 +15,7 @@ from nutel.toy.events import (
     TRACK,
     Sources,
     angle_from_zenith_azimuth,
-    atmospheric_cos_zenith,
+    atmospheric_zenith_angle,
     box_interval,
     emit_photons,
     icecube_inelasticity,
@@ -79,25 +79,30 @@ def test_energies_are_log_uniform(prior):
 def test_atmospheric_muons_are_down_going_and_concentrated_near_vertical(prior):
     sel = prior["type"] == ATMOSPHERIC
     zen, az = zenith_azimuth(prior["dir_x"][sel], prior["dir_z"][sel])
-    cos_z = np.cos(zen)
     assert np.all(prior["dir_z"][sel] < 0)
-    assert cos_z.min() >= 0.1 - 1e-12
-    assert 0.80 < np.median(cos_z) < 0.86  # Becherini et al. at 2 km w.e. (literature: 0.83)
+    assert np.cos(zen).min() >= 0.1 - 1e-12
+    assert 0.90 < np.median(np.cos(zen)) < 0.95  # 2-D measure at 2 km w.e.: median cos 0.928, zenith 21.9 deg
+    counts, _ = np.histogram(zen, bins=np.linspace(0, math.acos(0.1), 18))
+    assert np.argmax(counts) == 0  # the density peaks at the vertical
     assert_binomial(np.sum(az == 0), sel.sum(), 0.5)
     uniform = sample_prior(20_000, preset(event_type="atmospheric", atmospheric_zenith="uniform"), rng=3)
-    cz = -uniform["dir_z"]
-    assert ks_distance(cz, lambda v: (v - 0.1) / 0.9) < KS_LIMIT
+    theta = np.arccos(-uniform["dir_z"])
+    assert ks_distance(theta, lambda v: v / math.acos(0.1)) < KS_LIMIT  # uniform in the angle
+    assert_binomial(np.sum(uniform["dir_x"] > 0), 20_000, 0.5)
 
 
-def test_atmospheric_cos_zenith_cdf():
+def test_atmospheric_zenith_angle_cdf():
     u = np.random.default_rng(0).random(50_000)
-    c = atmospheric_cos_zenith(u, 2.0, (0.1, 1.0))
+    theta = atmospheric_zenith_angle(u, 2.0, (0.1, 1.0))
     k1 = -0.581 * 2.0 + 0.034
-    grid = np.linspace(0.1, 1.0, 20001)
-    pdf = grid * np.exp(k1 / grid)
+    grid = np.linspace(0.0, math.acos(0.1), 20001)
+    pdf = np.cos(grid) * np.exp(k1 / np.cos(grid))
     cdf = np.concatenate([[0], np.cumsum(0.5 * (pdf[1:] + pdf[:-1]) * np.diff(grid))])
     cdf /= cdf[-1]
-    assert ks_distance(c, lambda v: np.interp(v, grid, cdf)) < KS_LIMIT
+    assert ks_distance(theta, lambda v: np.interp(v, grid, cdf)) < KS_LIMIT
+    flat = atmospheric_zenith_angle(u, None, (0.5, 1.0))
+    assert ks_distance(flat, lambda v: v / (math.pi / 3)) < KS_LIMIT
+    np.testing.assert_allclose(atmospheric_zenith_angle(u[:5], 2.0, (0.5, 0.5)), math.pi / 3)
 
 
 def test_starting_tracks_split_the_energy():

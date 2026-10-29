@@ -6,7 +6,7 @@ import pytest
 
 from nutel.toy.cli import _overrides, build_parser, default_output, main
 from nutel.toy.config import config_fields, preset
-from nutel.toy.io import load, save
+from nutel.toy.io import describe, load, save
 from synthetic import synthetic_data, two_detectors
 
 
@@ -107,7 +107,45 @@ def test_family(tmp_path, capsys):
     text = capsys.readouterr().out
     assert "[2]" in text
     assert out.stat().st_size > 1000
-    assert main(["family", "--family", "nonexistent", "--n", "2", "-q"]) == 1
+    with pytest.raises(SystemExit) as error:
+        main(["family", "--family", "nonexistent", "--n", "2", "-q"])
+    assert error.value.code == 2
+    assert "invalid choice: 'nonexistent'" in capsys.readouterr().err
+
+
+def test_family_refuses_options_it_would_ignore(tmp_path, capsys):
+    argv = ["generate", "--family", "default", "--n-geometries", "2", "-n", "2", "--device", "cpu", "-q"]
+    argv += ["--medium", "ice", "--noise-rate", "0", "--layout", "core", "--efficiency", "0.3"]
+    with pytest.raises(SystemExit) as error:
+        main([*argv, "-o", str(tmp_path / "x.h5")])
+    assert error.value.code == 2
+    err = capsys.readouterr().err
+    assert "--medium, --layout, --efficiency, --noise-rate" in err
+    assert "samples the layout, the medium and the readout efficiency" in err
+    assert not (tmp_path / "x.h5").exists()
+    with pytest.raises(SystemExit):
+        main(["generate", "--family", "nope", "-n", "2", "-q"])
+    assert "invalid choice: 'nope'" in capsys.readouterr().err
+
+
+def test_family_file_describes_sampled_parts(tmp_path):
+    out = tmp_path / "fam.h5"
+    argv = ["generate", "--family", "default", "--n-geometries", "2", "-n", "4", "--preset", "straight"]
+    with pytest.raises(SystemExit):
+        main([*argv, "--time-jitter", "0", "-q", "-o", str(out)])
+    argv += ["--merge-window", "5", "--pulse-time", "mean", "--device", "cpu", "-q", "-o", str(out)]
+    assert main(argv) == 0
+    data = load(out)
+    assert data.config.readout.merge_window == 5
+    assert data.config.readout.pulse_time == "mean"
+    assert all(d.readout.merge_window == 5 for d in data.detectors)
+    assert data.provenance["medium"] == "sampled per detector"
+    text = describe(out)
+    assert "detectors sampled from the family default" in text
+    assert "layout:     sampled per detector" in text
+    assert "medium:     sampled per detector; absorption off; scattering off" in text
+    assert "readout:    efficiency, jitter and noise sampled per detector, window" in text
+    assert "medium:     water" not in text
 
 
 def test_noise_augmentation(files, tmp_path):

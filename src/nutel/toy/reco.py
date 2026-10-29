@@ -14,7 +14,8 @@ Contents:
 * :func:`angular_error`: the angle between two directions in degrees;
 * :func:`causal_cleaning`: the causality filter for noise hits;
 * geometry helpers: :func:`direction_angle`, :func:`unit_vector`, :func:`track_coordinates`,
-  :func:`emission_coordinate` (zenith and azimuth: :func:`nutel.toy.zenith_azimuth`).
+  :func:`emission_coordinate`, :func:`direct_light_possible`, :func:`shadowed` (zenith and azimuth:
+  :func:`nutel.toy.zenith_azimuth`).
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ __all__ = [
     "LineFit",
     "angular_error",
     "causal_cleaning",
+    "direct_light_possible",
     "direction_angle",
     "emission_coordinate",
     "energy_from_charge",
@@ -38,6 +40,7 @@ __all__ = [
     "fit_charge_calibration",
     "linefit",
     "linefit_events",
+    "shadowed",
     "time_residuals",
     "time_residuals_arrays",
     "track_coordinates",
@@ -152,6 +155,93 @@ def emission_coordinate(points: ArrayLike, anchor: ArrayLike, direction: ArrayLi
         raise ValueError("the refractive index must exceed 1 for Cherenkov light")
     s, rho = track_coordinates(points, anchor, direction)
     return s - np.abs(rho) / np.sqrt(n_arr**2 - 1)
+
+
+def direct_light_possible(
+    points: ArrayLike, anchor: ArrayLike, direction: ArrayLike, n: ArrayLike, s_start: ArrayLike, s_end: ArrayLike
+) -> np.ndarray:
+    """Whether the direct Cherenkov light of a muon can reach ``points``: its emission point lies on the segment.
+
+    The muon emits light only on ``s_start <= s <= s_end`` (``data.truth.s_start``, ``data.truth.s_end``, measured
+    from the anchor or vertex). A module whose emission coordinate ``s_e`` (:func:`emission_coordinate`) lies outside
+    this segment gets no direct track light, however close it is to the line. Modules hidden behind another module
+    (shadowing) are not considered here.
+
+    Parameters
+    ----------
+    points, anchor, direction, n
+        As in :func:`emission_coordinate`.
+    s_start, s_end
+        Ends of the light-emitting segment [m], broadcast against ``points[..., 0]``; NaN (no muon light) gives False.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean array, True where ``s_start <= s_e <= s_end``.
+
+    Examples
+    --------
+    A track along +x emitting on ``[-100, 100]`` m in water (n = 1.33, ``cot theta_c = 1.14``): the module 20 m
+    beside the line at ``x = 0`` receives light from ``s_e = -22.8`` m, the one 200 m away from ``s_e = -228`` m.
+
+    >>> direct_light_possible([[0.0, 20.0], [0.0, 200.0]], [0.0, 0.0], [1.0, 0.0], 1.33, -100.0, 100.0)
+    array([ True, False])
+    """
+    s_e = emission_coordinate(points, anchor, direction, n)
+    lo = np.asarray(s_start, dtype=np.float64)
+    hi = np.asarray(s_end, dtype=np.float64)
+    return np.asarray((s_e >= lo) & (s_e <= hi))
+
+
+def shadowed(start: ArrayLike, end: ArrayLike, modules: ArrayLike, radius: float, *, margin: float = 2.0) -> np.ndarray:
+    """Whether another module stands in the way of the straight light from ``start`` to the module at ``end``.
+
+    Modules are opaque discs of radius ``radius``. The light is shadowed (fully or in part) where the centre of any
+    other module comes closer than ``margin x radius`` to the segment between ``start`` (an emission point, e.g.
+    ``anchor + s_e d`` of :func:`emission_coordinate`, or a cascade vertex) and ``end``. ``margin = 2`` flags every
+    module whose disc overlaps the beam of width ``2 radius`` that reaches ``end`` (partial shadows included);
+    ``margin = 1`` only the modules that cross the central ray.
+
+    Parameters
+    ----------
+    start, end
+        Positions, shape ``[..., 2]`` (broadcast against each other) [m]; ``end`` is a module position.
+    modules
+        All module positions of the detector, shape ``[M, 2]`` [m].
+    radius
+        Module radius [m].
+    margin
+        Distance limit in units of ``radius``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean array of the broadcast shape of ``start`` and ``end`` without the last axis.
+
+    Examples
+    --------
+    >>> modules = [[10.0, 0.0], [20.0, 0.0], [20.0, 5.0]]
+    >>> shadowed([0.0, 0.0], modules, modules, 0.5)
+    array([False,  True, False])
+    """
+    a = np.asarray(start, dtype=np.float64)
+    b = np.asarray(end, dtype=np.float64)
+    a, b = np.broadcast_arrays(a, b)
+    q_all = np.asarray(modules, dtype=np.float64).reshape(-1, 2)
+    seg = b - a
+    length2 = np.sum(seg**2, axis=-1)
+    limit = margin * float(radius)
+    out = np.zeros(a.shape[:-1], dtype=bool)
+    for q in q_all:
+        rel = q - a
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = np.sum(rel * seg, axis=-1) / length2
+        between = (t > 0) & (t < 1)
+        foot = a + np.clip(np.nan_to_num(t), 0.0, 1.0)[..., None] * seg
+        close = np.hypot(q[0] - foot[..., 0], q[1] - foot[..., 1]) < limit
+        itself = np.hypot(q[0] - b[..., 0], q[1] - b[..., 1]) < 1e-6
+        out |= between & close & ~itself
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -528,7 +618,8 @@ def time_residuals(
     data
         A :class:`~nutel.toy.data.SimData`.
     level
-        ``"pulses"`` (residual of the pulse time = first hit) or ``"hits"`` (every hit; needs the hit level).
+        ``"pulses"`` (residual of the pulse time, see ``readout.pulse_time``) or ``"hits"`` (every hit; needs the
+        hit level).
     to_surface
         Measure the expected time to the surface of the module (``radius > 0`` in :func:`expected_arrival_time`),
         so that the earliest direct light has a residual of about 0; ``False`` uses the module centre.

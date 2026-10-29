@@ -145,6 +145,30 @@ files (`tar -xf`), the SQLite and model archives compressed ones (`tar -xzf`).
 Hexagon Ice LE and Triangle are the small ones to start with. Triangle unpacks into `merged_photons/` (805 files,
 20.3 GB), `pulses_no_noise/` (121 files, 6.3 GB), `mc_truth/` (2.4 GB) and `selections/`.
 
+### One chunk without the full archive
+
+The Parquet archives are uncompressed tar files, and the server answers HTTP range requests, so a single file of an
+archive can be fetched alone. Test chunk 900 of Triangle (25 000 events of the test partition, the noise-free
+`pulses_no_noise` level) and its truth table take 55 MB:
+
+```bash
+mkdir -p data/nubench
+curl -L -r 1641735168-1694479014 -o data/nubench/pulses_no_noise_900.parquet https://sid.erda.dk/share_redirect/ediHXAsygn
+curl -L -r 27217495040-27220133134 -o data/nubench/mc_truth_900.parquet https://sid.erda.dk/share_redirect/ediHXAsygn
+python -m pip install pyarrow
+```
+
+The byte ranges are the positions of the two files in the Triangle Parquet archive (52 743 847 and 2 638 095 bytes; a
+file of another size is a failed download). Reading them needs pandas and pyarrow:
+
+```python
+import pandas as pd
+
+pulses = pd.read_parquet("data/nubench/pulses_no_noise_900.parquet")  # one row per pulse, index event_no
+truth = pd.read_parquet("data/nubench/mc_truth_900.parquet")  # one row per event, index event_no
+event = pulses.loc[truth.index[0]]  # the pulses of the first event: sensor_pos_x/y/z, t, charge, ...
+```
+
 ## Citation
 
 R. F. Ørsøe, S. Meighen-Berger, J. Lazar, J. Prado, I. Mozún-Mateo, A. Rosted, P. Weigel and A. Llorente Anaya,

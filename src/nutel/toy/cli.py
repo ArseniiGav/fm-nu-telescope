@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 
 from .config import MEDIA, PRESETS, SimConfig, config_fields, medium_name, preset
+from .family import FAMILIES
 
 __all__ = ["build_parser", "default_output", "main"]
 
@@ -102,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
         "draw their layouts.",
         formatter_class=_HelpFormatter,
     )
-    fam.add_argument("--family", default="default", metavar="NAME", help="family preset (default, tridentlike)")
+    fam.add_argument("--family", choices=list(FAMILIES), default="default", help="family preset")
     fam.add_argument("--n", type=int, default=8, metavar="K", help="number of detectors")
     fam.add_argument("--seed", type=int, default=0, help="seed of the sampling (the --geometry-seed of generate)")
     fam.add_argument("-o", "--output", type=Path, default=None, metavar="FIG", help="draw the layouts into this file")
@@ -176,7 +177,7 @@ def _add_generate(commands: Any) -> None:
         formatter_class=_HelpFormatter,
     )
     gen.add_argument("--preset", choices=list(PRESETS), default="full", help="physics preset (cumulative ladder)")
-    gen.add_argument("--medium", choices=list(MEDIA), default="water", help="medium preset")
+    gen.add_argument("--medium", choices=list(MEDIA), default=None, help="medium preset (default: water)")
     gen.add_argument("-n", "--n-events", type=int, default=None, metavar="N", help="number of events (default 10000)")
     gen.add_argument("--seed", type=int, default=0, help="random seed (non-negative integer)")
     out = gen.add_argument_group("output")
@@ -193,14 +194,18 @@ def _add_generate(commands: Any) -> None:
         "--level",
         choices=("hits", "pulses", "both"),
         default="both",
-        help="data levels to store: pulses are always stored, 'hits' and 'both' also keep every hit",
+        help="data levels to store: pulses are always stored; 'both' also keeps every hit ('hits': alias of 'both')",
     )
     out.add_argument(
         "--save-paths", type=int, default=0, metavar="K", help="store the photon paths of the first K events"
     )
     multi = gen.add_argument_group("multi-detector data sets")
     multi.add_argument(
-        "--family", default=None, metavar="NAME", help="sample the detectors from this family (default, tridentlike)"
+        "--family",
+        choices=list(FAMILIES),
+        default=None,
+        help="sample the detectors (layout, medium, readout efficiency, jitter and noise) from this family; the "
+        "layout, medium and these readout options cannot be given with it",
     )
     multi.add_argument("--n-geometries", type=int, default=1, metavar="K", help="number of sampled detectors")
     multi.add_argument("--geometry-seed", type=int, default=0, metavar="S", help="seed of the detector sampling")
@@ -222,6 +227,7 @@ def _add_generate(commands: Any) -> None:
         help="direction of every event as zenith and azimuth [deg] (the alternative to --fixed-angle)",
     )
     _add_config_options(groups)
+    gen.set_defaults(subparser=gen)
     adv = gen.add_argument_group("advanced options")
     adv.add_argument("--device", default="auto", help="'auto' (CUDA if available), 'cpu', 'cuda' or 'cuda:N'")
     adv.add_argument("--threads", type=int, default=None, help="CPU threads used by torch (default: torch's choice)")
@@ -368,7 +374,29 @@ def _overrides(args: argparse.Namespace) -> dict[str, Any]:
     return out
 
 
+#: Readout options that a detector family samples per detector.
+_FAMILY_READOUT = ("efficiency", "time_jitter", "noise_rate")
+
+
+def _family_flag_conflicts(args: argparse.Namespace) -> list[str]:
+    """Options given explicitly that a detector family would replace (layout, medium, sampled readout values)."""
+    flags = ["--medium"] if args.medium is not None else []
+    for part, f in config_fields():
+        sampled = part in ("layout", "medium") or (part == "readout" and f.name in _FAMILY_READOUT)
+        if sampled and getattr(args, f.name) is not None:
+            flags.append("--" + f.name.replace("_", "-"))
+    return flags
+
+
 def _generate(args: argparse.Namespace, argv: list[str]) -> int:
+    if args.family is not None:
+        conflicts = _family_flag_conflicts(args)
+        if conflicts:
+            args.subparser.error(
+                f"--family {args.family} samples the layout, the medium and the readout efficiency, time jitter and "
+                f"noise of every detector; remove {', '.join(conflicts)} (or drop --family)"
+            )
+    args.medium = args.medium or "water"
     if args.n_events is None and args.events_per_geometry is None:
         args.n_events = 10_000
     overrides = _overrides(args)
@@ -398,7 +426,8 @@ def _generate(args: argparse.Namespace, argv: list[str]) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     if not os.access(output.parent, os.W_OK):
         raise PermissionError(f"cannot write {output}: no write permission in {output.parent.resolve()}")
-    log.info("preset %s in %s%s", args.preset, args.medium, f" with {overrides}" if overrides else "")
+    place = f"detectors of the family {args.family}" if args.family is not None else args.medium
+    log.info("preset %s in %s%s", args.preset, place, f" with {overrides}" if overrides else "")
     data = generate(
         args.n_events,
         config=config,
@@ -416,7 +445,7 @@ def _generate(args: argparse.Namespace, argv: list[str]) -> int:
     )
     data.provenance |= {
         "preset": args.preset,
-        "medium": args.medium,
+        "medium": args.medium if args.family is None else "sampled per detector",
         "overrides": {k: list(v) if isinstance(v, tuple) else v for k, v in overrides.items()},
         "command_line": "nutelsim " + shlex.join(argv),
     }

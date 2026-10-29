@@ -11,7 +11,7 @@ file.h5
 ├── truth/       true event parameters                                     [N]
 ├── photons/     photon bookkeeping per event                              [N]
 ├── pulses/      pulses of every event (always)                            [N + 1], [n_pulses]
-├── hits/        hits of every event (level "hits" or "both")              [N + 1], [n_hits]
+├── hits/        hits of every event (level "both", alias "hits")          [N + 1], [n_hits]
 ├── bursts/      stochastic losses of every event (when present)           [N + 1], [n_bursts]
 └── paths/       photon paths of the first events (--save-paths K)         [n_paths], [n_points]
 ```
@@ -22,7 +22,7 @@ file.h5
 the merging window (time of the first hit, or their mean time with `--pulse-time mean`; charge = number of hits),
 what a detector records. The two levels mirror
 the merged photons and the pulses of NuBench ([nubench.md](nubench.md)). Pulses are always written; `--level` chooses
-whether the hits are kept as well (`both`, the default, or `hits`) or dropped (`pulses`).
+whether the hits are kept as well (`both`, the default; `hits` is an alias of `both`) or dropped (`pulses`).
 
 ## Reading the data
 
@@ -115,7 +115,7 @@ those of `/geometries`, not those of `config`.
 | `dir_x`, `dir_z`   | float32 |       | unit vector of the direction of travel                           |
 | `zenith`           | float32 | rad   | $\arccos(-d_z)$: 0 down-going, $\pi$ up-going                    |
 | `azimuth`          | float32 | rad   | 0 if the particle comes from $+x$, $\pi$ if from $-x$            |
-| `angle`            | float32 | rad   | $\operatorname{atan2}(d_z, d_x)$ in $(-\pi, \pi]$               |
+| `angle`            | float32 | rad   | $\mathrm{atan2}(d_z, d_x)$ in $(-\pi, \pi]$               |
 | `x0`, `z0`         | float32 | m     | anchor point of a through-going track (closest point to the origin) or vertex |
 | `t0`               | float32 | ns    | time at the anchor point or vertex                               |
 | `energy`           | float32 | GeV   | muon energy (track, atmospheric), neutrino energy (starting), cascade energy (cascade) |
@@ -123,6 +123,7 @@ those of `/geometries`, not those of `config`.
 | `energy_cascade`   | float32 | GeV   | energy of the vertex cascade (0 for track, atmospheric)          |
 | `cascade_fraction` | float32 |       | inelasticity $y$ of starting tracks, NaN for the other types     |
 | `track_length`     | float32 | m     | length of the light-emitting muon segment (0 for cascades)       |
+| `s_start`, `s_end` | float32 | m     | ends of that segment along the line $\mathbf{a} + s\,\mathbf{d}$ from the anchor or vertex: entry into the generation box (0 at the vertex of a starting track) and exit or stop point; `track_length` = `s_end` - `s_start`; NaN where no muon light is emitted (cascades, lines that miss the generation box) |
 | `length_in_area`   | float32 | m     | part of that segment inside the instrumented area                |
 | `n_bursts`         | int32   |       | number of stochastic-loss bursts                                 |
 | `energy_lost`      | float32 | GeV   | sum of the burst energies                                        |
@@ -220,7 +221,12 @@ n_detected = (paths.fate == PointType.DETECT).sum()
 
 A file made with `--family NAME --n-geometries K` holds `K` sampled detectors in `/geometries`, and every event points
 to its own with `truth.geometry_index`. Everything else is the same as in a single-detector file; the pulses and hits
-of event `i` lie on the modules of `data.geometry(i)`.
+of event `i` lie on the modules of `data.geometry(i)`. The family samples the layout, the medium and the readout
+efficiency, time jitter and noise of every detector: these are stored per detector in `/geometries`
+(`data.detector(i)`), the family's ranges in the provenance (`family`), and `nutelsim info` marks the layout, medium
+and these readout values of the stored configuration as "sampled per detector". `nutelsim generate` refuses
+`--family` together with `--medium`, a layout option or `--efficiency`, `--time-jitter`, `--noise-rate`; the physics,
+emission and prior options, the readout window, the merge window and the pulse time apply to every detector.
 
 ```python
 data = load("data/t5_family.h5")
@@ -237,7 +243,7 @@ same_detector = data.select(data.truth.geometry_index == 3)  # the events of det
 | `photons_per_chunk`, `n_chunks`          | chunking of the photon transport (the output depends on it) |
 | `level`, `save_paths`                    | the optional output requested                               |
 | `family`, `n_geometries`, `geometry_seed`, `events_per_geometry` | the detector family (`name` and `ranges`, or null) and the events per detector |
-| `preset`, `medium`, `overrides`          | the CLI preset, medium and the changed options (from `nutelsim`) |
+| `preset`, `medium`, `overrides`          | the CLI preset, medium (`sampled per detector` with a family) and the changed options (from `nutelsim`) |
 | `package_version`, `git_commit`          | version of `nutel`; the commit when run from a git checkout |
 | `python_version`, `numpy_version`, `torch_version`, `h5py_version`, `platform` | software environment |
 | `created`, `wall_time_s`                 | creation time (UTC) and simulation time in seconds          |

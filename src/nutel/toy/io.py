@@ -64,6 +64,8 @@ _UNITS = {
     "path_length": "m",
     "track_length": "m",
     "length_in_area": "m",
+    "s_start": "m",
+    "s_end": "m",
     "zenith": "rad",
     "azimuth": "rad",
     "angle": "rad",
@@ -151,6 +153,12 @@ def load(path: str | os.PathLike[str], *, level: Level = "both", bursts: bool = 
         groups: dict[str, Any] = {}
         for name, cls in _GROUPS.items():
             if name in f and wanted.get(name, True):
+                missing = [fld.name for fld in fields(cls) if fld.name not in f[name]]
+                if missing:
+                    raise ValueError(
+                        f"{path}: /{name} has no {', '.join(missing)}; the file was written by an older version of "
+                        "nutel: make it again"
+                    )
                 groups[name] = cls.from_arrays({fld.name: f[name][fld.name][()] for fld in fields(cls)})
         return SimData(
             detectors=_read_geometries(f),
@@ -286,8 +294,14 @@ def describe(path: str | os.PathLike[str]) -> str:
             "event types: " + ", ".join(f"{name} {c}" for name, c in zip(EVENT_TYPES, type_counts, strict=False))
         )
         lines.append("")
-        lines.append(f"configuration (preset: {matching_preset(config) or 'modified'}):")
-        lines += ["  " + line for line in config.describe().splitlines()]
+        if sampled:
+            runs = [provenance, *provenance.get("merged_from", [])]
+            names = sorted({str((run.get("family") or {}).get("name")) for run in runs} - {"None"})
+            source = f"the family {', '.join(names)}" if names else "a family given by its ranges"
+            lines.append(f"configuration (detectors sampled from {source}):")
+        else:
+            lines.append(f"configuration (preset: {matching_preset(config) or 'modified'}):")
+        lines += ["  " + line for line in config.describe(sampled=sampled).splitlines()]
         lines.append("")
         lines.append("provenance:")
         for key, value in provenance.items():
