@@ -198,7 +198,8 @@ nutelsim generate --event-type track --n-strings 4 -n 10000 --seed 53 -o data/t5
 nutelsim generate --event-type track --n-strings 16 -n 10000 --seed 53 -o data/t5_design_16strings.h5
 nutelsim generate --event-type track --layout core -n 10000 --seed 53 -o data/t5_design_core.h5
 nutelsim generate --event-type track --n-strings 16 --modules-per-string 6 --module-spacing 40 -n 10000 --seed 53 -o data/t5_design_16x6.h5
-# T5.4: detector effects, one at a time, tracks only
+# T5.4: detector effects, one at a time, tracks only (the first file is the reference with the default readout)
+nutelsim generate --event-type track -n 10000 --seed 54 -o data/t5_baseline.h5
 nutelsim generate --event-type track --time-jitter 0 -n 10000 --seed 54 -o data/t5_jitter0.h5
 nutelsim generate --event-type track --time-jitter 3 -n 10000 --seed 54 -o data/t5_jitter3.h5
 nutelsim generate --event-type track --time-jitter 10 -n 10000 --seed 54 -o data/t5_jitter10.h5
@@ -497,8 +498,9 @@ reconstruction that fits a point and a time?
 5 pulses against the string spacing, the number of strings, a dense core and the aspect of the array (16 strings of 6
 modules against 8 of 12). What would you build with 96 modules?
 
-**T5.4** Detector effects. With the `t5_jitter*`, `t5_eff*` and `t5_noise*` files: the LineFit resolution and the
-energy resolution from $Q$ against the time jitter, the efficiency and the noise rate. Which effect hurts which
+**T5.4** Detector effects. With `data/t5_baseline.h5` (the default readout) and the `t5_jitter*`, `t5_eff*` and
+`t5_noise*` files: the LineFit resolution and the energy resolution from $Q$ against the time jitter, the efficiency
+and the noise rate. Which effect hurts which
 estimator most?
 
 **T5.5** Up against down. Atmospheric muons outnumber the muons from neutrinos by about $10^6$ to 1 and come only from

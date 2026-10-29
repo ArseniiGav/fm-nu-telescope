@@ -9,7 +9,7 @@ files as the commands typed by hand. Run it from anywhere inside the repository:
     python examples/make_task_data.py --dry-run    # only print the commands
     python examples/make_task_data.py --only t3_   # only the files whose name contains "t3_"
 
-All 48 files take about 25 minutes on 8 cores of a server CPU and 0.5 GB in ``data/``.
+All 49 files take about 25 minutes on 8 cores of a server CPU and 0.5 GB in ``data/``.
 """
 
 from __future__ import annotations
