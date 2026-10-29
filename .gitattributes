@@ -1,0 +1,8 @@
+# LF in the repository and in every checkout (also on Windows); binary files are left alone.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.h5 binary
+*.hdf5 binary

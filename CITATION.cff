@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software in teaching or research, please cite it as below."
+type: software
+title: "nutel: a neutrino-telescope toy for learning event reconstruction"
+abstract: >-
+  A two-dimensional neutrino telescope simulated from first principles ("Light in the Deep"): tracks, starting
+  events, cascades and atmospheric muons emit Cherenkov light that is transported with switchable absorption and
+  scattering to strings of optical modules and read out as hits and pulses; sampled detector families for
+  multi-detector data sets, a documented HDF5 data format, analysis helpers and student tasks.
+authors:
+  - family-names: Gavrikov
+    given-names: Arsenii
+    affiliation: "Tsung-Dao Lee Institute, Shanghai Jiao Tong University"
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/ArseniiGav/fm-nu-telescope"
+url: "https://github.com/ArseniiGav/fm-nu-telescope"
+keywords:
+  - neutrino telescope
+  - event reconstruction
+  - Cherenkov light
+  - photon transport
+  - foundation models
+  - particle physics
+  - teaching

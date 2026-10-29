@@ -1,0 +1,149 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nutel"
+dynamic = ["version"]
+description = "A two-dimensional neutrino-telescope toy for learning event reconstruction."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Arsenii Gavrikov" }]
+requires-python = ">=3.10"
+keywords = [
+    "neutrino telescope",
+    "event reconstruction",
+    "Cherenkov light",
+    "photon transport",
+    "foundation models",
+    "particle physics",
+    "teaching",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Education",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
+]
+dependencies = [
+    "h5py>=3.8",
+    "numpy>=1.24",
+    "torch>=2.1",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "ipykernel>=6.25",
+    "jupyterlab>=4.0",
+    "matplotlib>=3.7",
+    "pandas>=2.0",
+    "pillow>=10.0",
+]
+dev = [
+    "mypy>=1.10",
+    "nbstripout>=0.7",
+    "pre-commit>=3.5",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.17",
+]
+
+[project.scripts]
+nutelsim = "nutel.toy.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ArseniiGav/fm-nu-telescope"
+Repository = "https://github.com/ArseniiGav/fm-nu-telescope"
+Issues = "https://github.com/ArseniiGav/fm-nu-telescope/issues"
+Changelog = "https://github.com/ArseniiGav/fm-nu-telescope/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/nutel/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/CHANGELOG.md", "/CITATION.cff", "/LICENSE"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nutel"]
+
+# ---------------------------------------------------------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "D",    # docstrings (NumPy convention)
+    "NPY",  # NumPy-specific rules
+    "PT",   # pytest style
+    "RUF",  # ruff-specific rules
+    "SIM",  # simplifications
+    "UP",   # pyupgrade
+]
+ignore = [
+    "D105",  # magic methods need no docstring
+    "D107",  # __init__ is documented in the class docstring
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["nutel.toy.config._param", "nutel.toy.data._a"]  # dataclass field helpers
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+# ---------------------------------------------------------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["h5py"]
+ignore_missing_imports = true
+
+# -------------------------------------------------------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests", "src"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--doctest-modules", "-m", "not slow"]
+markers = ["slow: physics validation and fresh-process reproducibility tests (run with `pytest -m slow`)"]
+xfail_strict = true
+
+# ------------------------------------------------------------------------------------------------------------ coverage
+[tool.coverage.run]
+source = ["nutel"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
