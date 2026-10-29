@@ -224,7 +224,7 @@ def image_from_arrays(
     unknown = [c for c in channels if c not in IMAGE_CHANNELS]
     if unknown:
         raise ValueError(f"unknown image channels {unknown}; choose from {', '.join(IMAGE_CHANNELS)}")
-    if len(s_idx) and (s_idx.min() < 0 or s_idx.max() >= n_str or m_idx.min() < 0 or m_idx.max() >= n_mod):
+    if len(s_idx) and (np.min(s_idx) < 0 or np.max(s_idx) >= n_str or np.min(m_idx) < 0 or np.max(m_idx) >= n_mod):
         raise ValueError(f"string or module index outside the grid of shape {shape}")
     e = event_index(offset)
     cells = n_str * n_mod
@@ -287,9 +287,9 @@ def image_grid(geometries: Sequence[Any]) -> tuple[tuple[int, int], list[np.ndar
         raise ValueError("no geometry given")
     string_ids = [np.unique(np.asarray(g.string, dtype=np.int64)) for g in geometries]
     modules = [np.asarray(g.module, dtype=np.int64) for g in geometries]
-    if any(len(m) and m.min() < 0 for m in modules):
+    if any(len(m) and np.min(m) < 0 for m in modules):
         raise ValueError("module numbers must be non-negative")
-    shape = (max(len(s) for s in string_ids), max(int(m.max()) + 1 if len(m) else 0 for m in modules))
+    shape = (max(len(s) for s in string_ids), max(int(np.max(m)) + 1 if len(m) else 0 for m in modules))
     mask = np.zeros((len(geometries), *shape), dtype=bool)
     for k, g in enumerate(geometries):
         rank = np.searchsorted(string_ids[k], np.asarray(g.string, dtype=np.int64))

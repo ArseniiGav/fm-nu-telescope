@@ -86,7 +86,7 @@ class Geometry:
         if 1 < len(x) <= 4000:  # overlap check (quadratic; skipped for very large tables)
             d2 = (x[:, None].astype(np.float64) - x[None, :]) ** 2 + (z[:, None].astype(np.float64) - z[None, :]) ** 2
             np.fill_diagonal(d2, np.inf)
-            if d2.min() < (2 * radius) ** 2:
+            if np.min(d2) < (2 * radius) ** 2:
                 raise ValueError(f"modules overlap: two module centres are closer than 2 x radius = {2 * radius} m")
 
     # ---------------------------------------------------------------------------------------------- construction
@@ -189,7 +189,7 @@ class Geometry:
     @property
     def bounds(self) -> tuple[float, float, float, float]:
         """Instrumented area, the bounding box of the module centres: ``(x_min, x_max, z_min, z_max)`` [m]."""
-        return float(self.x.min()), float(self.x.max()), float(self.z.min()), float(self.z.max())
+        return float(np.min(self.x)), float(np.max(self.x)), float(np.min(self.z)), float(np.max(self.z))
 
     @property
     def size(self) -> tuple[float, float]:
@@ -222,7 +222,7 @@ class Geometry:
         """One-paragraph description (used by ``nutelsim info``)."""
         x0, x1, z0, z1 = self.bounds
         counts = self.modules_per_string
-        per_string = f"{counts[0]}" if np.all(counts == counts[0]) else f"{counts.min()}-{counts.max()}"
+        per_string = f"{counts[0]}" if np.all(counts == counts[0]) else f"{np.min(counts)}-{np.max(counts)}"
         params = ", ".join(f"{k} = {v}" for k, v in self.params.items())
         return (
             f"geometry {self.geometry_id} ({self.layout}{': ' + params if params else ''}): {self.n_strings} strings, "
@@ -290,9 +290,9 @@ def make_geometry(spec: Layout | None = None, **overrides: Any) -> Geometry:
         core = core - core.mean() if n_core else core
         n_outer = n_str - n_core
         left, right = n_outer // 2, n_outer - n_outer // 2
-        edge = core.max() if n_core else -0.5 * p.string_spacing
+        edge = np.max(core) if n_core else -0.5 * p.string_spacing
         right_x = edge + p.string_spacing * np.arange(1, right + 1)
-        left_x = (core.min() if n_core else 0.5 * p.string_spacing) - p.string_spacing * np.arange(1, left + 1)
+        left_x = (np.min(core) if n_core else 0.5 * p.string_spacing) - p.string_spacing * np.arange(1, left + 1)
         xs = np.sort(np.concatenate([left_x, core, right_x]))
         params |= {"n_core": n_core, "core_spacing": p.core_spacing}
     elif p.layout == "irregular":
@@ -320,7 +320,7 @@ def make_geometry(spec: Layout | None = None, **overrides: Any) -> Geometry:
     z = module * p.module_spacing + np.repeat(offsets, counts)
     # centre the bounding box of the module centres on the origin
     x = x - 0.5 * (x.min() + x.max())
-    z = z - 0.5 * (z.min() + z.max())
+    z = z - 0.5 * (np.min(z) + np.max(z))
     params["module_radius"] = p.module_radius
     return Geometry(
         string=string,
