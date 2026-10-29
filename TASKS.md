@@ -157,8 +157,8 @@ nutelsim generate --preset straight --event-type track --cherenkov-spread 0 -n 2
 nutelsim generate --preset absorb --event-type track --cherenkov-spread 0 -n 2000 --seed 21 -o data/t2_absorb_track.h5
 nutelsim generate --preset straight --event-type cascade --fixed-vertex 3.7 -2.9 --fixed-energy 1000 -n 2000 --seed 22 -o data/t2_straight_cascade.h5
 nutelsim generate --preset absorb --event-type cascade --fixed-vertex 3.7 -2.9 --fixed-energy 1000 -n 2000 --seed 22 -o data/t2_absorb_cascade.h5
-# T2.3: four decades of energy, tracks and cascades (the 100 TeV end has 10^5-10^6 photons per event)
-nutelsim generate --preset scatter --event-type track --track-energy-range 10 100000 -n 2000 --seed 23 -o data/t2_track_he.h5
+# T2.3: four decades of energy, tracks (with the stochastic losses switched on) and cascades; the 100 TeV end has 10^5-10^6 photons per event
+nutelsim generate --preset scatter --stochastic --event-type track --track-energy-range 10 100000 -n 2000 --seed 23 -o data/t2_track_he.h5
 nutelsim generate --preset scatter --event-type cascade --cascade-energy-range 10 100000 -n 2000 --seed 24 -o data/t2_cascade_he.h5
 # T3: the physics ladder in water and ice, the same events everywhere
 nutelsim generate --preset straight --medium water -n 20000 --seed 31 -o data/t3_straight_water.h5
@@ -298,7 +298,8 @@ maximum? What changes in three dimensions?
 $Q$ against the energy, for every event type. The charge of a pulse: what is its distribution, and why is it mostly 1?
 When are charges above 1 frequent?
 Then over four decades: in `data/t2_track_he.h5` and `data/t2_cascade_he.h5` the energies are log-uniform between
-10 GeV and 100 TeV. Plot $Q$ against $E$ for both on log axes. For cascades the slope is 1 at every energy. For tracks
+10 GeV and 100 TeV (the track file has the stochastic losses switched on, `--stochastic`, and no noise). Plot $Q$
+against $E$ for both on log axes. For cascades the slope is 1 at every energy. For tracks
 the light is flat at low energy and grows above a critical energy: find it, and relate it to the energy loss of the
 muon, $-\mathrm{d}E/\mathrm{d}x = a + bE$ (at which energy do the stochastic losses equal the ionisation loss?). What
 happens to tracks below about 50 GeV, and why does the 100 TeV end take so much longer to simulate?
