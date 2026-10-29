@@ -16,7 +16,7 @@ repository `fm-nu-telescope` holds the Python package `nutel` (the toy is `nutel
 its documentation and the tasks for the students.
 
 <p align="center">
-  <img src="docs/img/event_animation.gif" width="560" alt="Animation of the Cherenkov front of a muon sweeping over the strings of the toy telescope">
+  <img src="docs/img/event_animation_photons.gif" width="560" alt="Animation of one muon event in the toy telescope: the photon paths, the Cherenkov fronts, the hit modules and the noise hits">
   <br>
   <em>A muon (star) crosses the strings and its Cherenkov photons fly out at c/n: each line is the path of one photon,
   the blue dots are its scatterings, absorbed photons turn grey, and a hit module grows with its charge and takes the
