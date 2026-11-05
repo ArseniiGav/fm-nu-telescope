@@ -107,7 +107,7 @@ scattering ($g$ close to 1) many short steps are needed to turn a photon around.
 | Cherenkov angle              | $\theta_c$           | (derived)                | 42.2°           | 40.7° |     |
 | speed of light in the medium | $c_n = c/n_g$        | (derived)                | 0.2221          | 0.2271 | m/ns |
 
-Water absorbs more and scatters little; ice absorbs less and scatters a lot. Sea water glows ($^{40}$K decays and
+Water absorbs more and scatters little; ice absorbs less and scatters a lot. Sea water glows ($^{40}\mathrm{K}$ decays and
 bioluminescence), so its modules see far more noise than those in ice. The values are typical orders of magnitude,
 not a fit to any site. For comparison ([references.md](references.md#1-optical-properties-of-the-medium)):
 in the Mediterranean at the ANTARES site $\lambda_a \simeq 60$ m and $\lambda_\mathrm{eff} \simeq 265$ m for blue
@@ -125,9 +125,10 @@ p(\vartheta) = \frac{1}{2\pi} \, \frac{1 - g^2}{1 + g^2 - 2 g \cos\vartheta}.
 ```
 
 It is normalised, since $\int_{-\pi}^{\pi} d\vartheta / (a - b\cos\vartheta) = 2\pi/\sqrt{a^2 - b^2}$ with
-$a = 1 + g^2$, $b = 2g$ gives $2\pi/(1 - g^2)$. Its Fourier series is $p(\vartheta) = \frac{1}{2\pi}\sum_k
-g^{|k|} e^{ik\vartheta}$, so $\langle \cos k\vartheta \rangle = g^k$ and in particular $\langle\cos\vartheta\rangle
-= g$. It is the wrapped Cauchy distribution, sampled by inverting its cumulative distribution:
+$a = 1 + g^2$, $b = 2g$ gives $2\pi/(1 - g^2)$. Its Fourier series is
+$p(\vartheta) = \frac{1}{2\pi}\sum_k g^{|k|} e^{ik\vartheta}$, so $\langle \cos k\vartheta \rangle = g^k$ and in
+particular $\langle\cos\vartheta\rangle = g$. It is the wrapped Cauchy distribution, sampled by inverting its
+cumulative distribution:
 
 ```math
 \vartheta = 2 \arctan\!\left[\frac{1 - g}{1 + g} \tan\!\left(\pi\left(u - \tfrac{1}{2}\right)\right)\right],
@@ -501,7 +502,7 @@ A detected photon with no scattering is *direct*, otherwise *scattered*.
   charge 1.
 
 Real modules see noise rates from about 0.5 kHz (IceCube, in ice) to tens of kHz (ANTARES, Baikal-GVD) and
-190-250 kHz (a 31-PMT KM3NeT module, mostly $^{40}$K decays and bioluminescence); PMT transit-time spreads are
+190-250 kHz (a 31-PMT KM3NeT module, mostly $^{40}\mathrm{K}$ decays and bioluminescence); PMT transit-time spreads are
 2.6-4.5 ns (FWHM). NuBench merges photons within the transit-time spread of each data set (1.5-4.5 ns), takes the mean
 time of the merged photons and smears the pulse times by 1 ns ([references.md](references.md#6-readout)).
 

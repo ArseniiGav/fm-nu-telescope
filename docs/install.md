@@ -16,8 +16,9 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1        :: PowerShell
 ```
 
-If `python` is not found, use `py` instead. Every `nutelsim` command of [TASKS.md](../TASKS.md) is a single line and
-works in any shell; `python examples/make_task_data.py` makes all the data sets of the tasks in one go.
+If `python` is not found, use `py` instead. Every `nutelsim` command of [tasks/stage_a/](../tasks/stage_a/README.md)
+is a single line and works in any shell; `python examples/make_task_data.py` makes all the data sets of the tasks in
+one go.
 [WSL](https://learn.microsoft.com/windows/wsl/) gives a Linux shell on Windows if you prefer bash.
 
 ## Which PyTorch

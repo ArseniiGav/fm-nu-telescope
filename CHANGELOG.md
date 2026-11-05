@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
 ## [0.1.0] - 2026-10-29
 
 Stage A: the toy "Light in the Deep".
@@ -19,6 +21,8 @@ Stage A: the toy "Light in the Deep".
   multi-detector data sets.
 - HDF5 data format with configuration and provenance, `merge` and noise augmentation; the `nutelsim` command line.
 - Analysis helpers: event features, LineFit and charge-based energy, event displays, photon paths and animations.
-- Documentation, student tasks T0-T5 and tests.
+- Documentation, student tasks T0-T5 in [tasks/stage_a/](tasks/stage_a/README.md) (index of the stages:
+  [tasks/README.md](tasks/README.md)) and tests.
 
+[Unreleased]: https://github.com/ArseniiGav/fm-nu-telescope/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ArseniiGav/fm-nu-telescope/releases/tag/v0.1.0

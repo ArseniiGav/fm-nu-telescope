@@ -7,9 +7,9 @@ networks learn to reconstruct events, first on the toy and then on NuBench.
 
 - **Core tasks:** T0 to T4. **Bonus:** T5.
 - The question IDs (T0.1, T2.3, ...) are fixed: we go through the answers by ID together.
-- Background: the model and its derivations are in [docs/physics.md](docs/physics.md), the file layout in
-  [docs/data_format.md](docs/data_format.md), NuBench in [docs/nubench.md](docs/nubench.md), and
-  [notebooks/00_quickstart.ipynb](notebooks/00_quickstart.ipynb) is a guided first look at the data.
+- Background: the model and its derivations are in [docs/physics.md](../../docs/physics.md), the file layout in
+  [docs/data_format.md](../../docs/data_format.md), NuBench in [docs/nubench.md](../../docs/nubench.md), and
+  [notebooks/00_quickstart.ipynb](../../notebooks/00_quickstart.ipynb) is a guided first look at the data.
 - **Where to run.** A laptop is enough (Linux, macOS or Windows; CPU only). Every `nutelsim` command below is a single
   line and works in any shell, and `python examples/make_task_data.py` makes all the data sets of T1 to T5 in one go.
 
@@ -75,7 +75,7 @@ nutelsim generate -n 1000 --seed 1          # -> data/toy_full_water_n1000_seed1
 
 The repository is `fm-nu-telescope`; the package it installs is `nutel` (the toy is `nutel.toy`, the command line
 `nutelsim`, the same as `python -m nutel.toy`). Windows, a smaller CPU-only PyTorch, Intel Macs and common problems:
-[docs/install.md](docs/install.md).
+[docs/install.md](../../docs/install.md).
 
 **T0.2** One event: inspect the file, then pick one event and list its truth, its pulses (and hits), and the module
 table of its detector. Draw it.
@@ -114,13 +114,13 @@ for name in ("straight", "absorb", "scatter", "full"):
 
 **T0.4** The NuBench dictionary. Make a table: for every field of the toy (truth, hits, pulses, geometry, detector
 parameters), the corresponding field or quantity of NuBench, its units and convention, or "none". Use
-[docs/nubench.md](docs/nubench.md) and the paper ([arXiv:2511.13111](https://arxiv.org/abs/2511.13111)); no download
+[docs/nubench.md](../../docs/nubench.md) and the paper ([arXiv:2511.13111](https://arxiv.org/abs/2511.13111)); no download
 is needed. Which toy quantities have no NuBench counterpart (and the other way round)? Where do the conventions differ
 (the pulse time, the charge, the noise, the angles)? The toy's zenith and azimuth say where the particle comes from;
 NuBench's describe its direction of travel. Write down how the angles convert.
 *Optional (about 30 minutes more):* check the conversion on real NuBench events. One test chunk of Triangle (25 000
 events, 55 MB; the download recipe and `pip install pyarrow` are in
-[docs/nubench.md](docs/nubench.md#one-chunk-without-the-full-archive)) is enough: for a few hundred high-energy CC
+[docs/nubench.md](../../docs/nubench.md#one-chunk-without-the-full-archive)) is enough: for a few hundred high-energy CC
 events with many pulses, does the time-ordered axis of the pulses (a LineFit in three dimensions) point along the
 direction built from `initial_state_zenith` and `initial_state_azimuth`, or against it?
 
@@ -143,7 +143,7 @@ every path in this document is relative to the repository root (a notebook in `n
 keeps files that already exist; `--overwrite` makes them again, `--dry-run` only prints them). Together they take
 about 25 minutes on 8 cores of a server CPU (longer on a laptop) and 0.5 GB of disk. On a cluster, run them in a job
 or an interactive session, not on the login node (see
-[examples/cluster](examples/cluster/README.md)). Files made with the same seed share the directions, energies and
+[examples/cluster](../../examples/cluster/README.md)). Files made with the same seed share the directions, energies and
 times of their events, which makes comparisons between presets or detectors sharper; the positions (anchor points and
 vertices) scale with the size of the detector, so they are shared only between files of the same layout. Such paired
 samples are made for differences, not for pooling. The light of T1 and T2 is simulated without noise (presets
@@ -238,7 +238,7 @@ tracks. What fraction of the generated tracks crosses the instrumented area at a
 
 **T1.2** Zenith. Plot the zenith distributions of the four event types. Why are $\theta_\mathrm{zen}$ (and not
 $\cos\theta_\mathrm{zen}$, as in three dimensions) uniform for the neutrino-induced events? The atmospheric muons
-follow the distribution of single muons at 2 km water equivalent (see [docs/physics.md](docs/physics.md)): why are
+follow the distribution of single muons at 2 km water equivalent (see [docs/physics.md](../../docs/physics.md)): why are
 they concentrated near the vertical? In a real telescope the
 Earth shields the detector from below: explain qualitatively what it removes (atmospheric muons) and what it does to
 neutrinos at high energies. Why are atmospheric muons down-going only?
@@ -272,7 +272,7 @@ top (T1.1); the acceptance or effective width against direction and energy (T1.3
     lines with a fixed direction, spaced evenly across the beam: which variable is uniform? Now rotate the beam.
 [^chord]: For a fixed direction, how wide is the rectangle seen from that direction, and how does the chord length
     change as the line is shifted across it? You should find a trapezoid. Check your mean against Cauchy's formula
-    $\langle L \rangle = \pi A / P$; the full result is in [docs/physics.md](docs/physics.md#tracks-isotropic-lines-through-the-detector).
+    $\langle L \rangle = \pi A / P$; the full result is in [docs/physics.md](../../docs/physics.md#tracks-isotropic-lines-through-the-detector).
 [^weights]: The weight of an event is the ratio of the wanted density to the injected one,
     $w \propto E^{-2} / p_\mathrm{inj}(E)$. The effective number of events is $(\sum w)^2 / \sum w^2$.
 
@@ -369,7 +369,7 @@ water and in ice, and how does it grow with the distance from the track? Compare
 per module with your prediction of T2.2: where does the straight-line prediction fail once scattering is on? Are the
 residuals of the first pulses Gaussian (pulls with the jitter of 1 ns)?
 
-**T3.3** Noise and cleaning. The noise rate follows the medium: 50 kHz per module in water (radioactive $^{40}$K and
+**T3.3** Noise and cleaning. The noise rate follows the medium: 50 kHz per module in water (radioactive $^{40}\mathrm{K}$ and
 bioluminescence), 0.5 kHz in ice. In `data/t3_full_water.h5`, `data/t3_full_water_noise200k.h5` and
 `data/t3_full_ice.h5`: how many noise hits per event do you expect[^noise], how many are there, and what fraction of
 the pulses do they make? Clean the events with a time window around the light, with the

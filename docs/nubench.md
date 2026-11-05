@@ -67,9 +67,10 @@ The augmentations to apply to every training event, at every pass (paper, append
 - time and charge smearing per pulse: $t \to |t + \epsilon_t|$ with $\epsilon_t \sim \mathcal{N}(0, 1\,\mathrm{ns})$,
   $q \to |q + \epsilon_q|$ with $\epsilon_q \sim \mathcal{N}(0, 0.25\,\mathrm{p.e.})$;
 - noise pulses (before the smearing): their number is Poisson with mean
-  $N_\mathrm{total} = R_\mathrm{OM}\, t_\mathrm{window}\, N_\mathrm{OMs}$, where $R_\mathrm{OM} = N_\mathrm{PMT}
-  R_\mathrm{PMT}$ (table above) and $t_\mathrm{window} = 5$ µs; each gets a time uniform in $[0, t_\mathrm{max}]$
-  ($t_\mathrm{max}$ = 5 µs, or the latest signal pulse if later), a random module and a charge of 1 p.e.
+  $N_\mathrm{total} = R_\mathrm{OM}\, t_\mathrm{window}\, N_\mathrm{OMs}$, where
+  $R_\mathrm{OM} = N_\mathrm{PMT} R_\mathrm{PMT}$ (table above) and $t_\mathrm{window} = 5$ µs; each gets a time
+  uniform in $[0, t_\mathrm{max}]$ ($t_\mathrm{max}$ = 5 µs, or the latest signal pulse if later), a random module
+  and a charge of 1 p.e.
   For Triangle, $24 \times 7.5\,\mathrm{kHz} \times 5\,\mathrm{µs} \times 60 = 54$ noise pulses per event on average.
 
 The archive also holds `mc_truth/` (the event-level table) and `selections/` (which chunks form the training and the

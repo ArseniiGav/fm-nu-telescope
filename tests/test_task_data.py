@@ -1,4 +1,4 @@
-"""The data commands of TASKS.md (read by examples/make_task_data.py) run, with fewer events."""
+"""The data commands of the stage A task sheet (read by examples/make_task_data.py) run, with fewer events."""
 
 import importlib.util
 from pathlib import Path
@@ -10,10 +10,9 @@ from nutel.toy.io import load
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "examples" / "make_task_data.py"
+TASK_SHEET = ROOT / "tasks" / "stage_a" / "README.md"
 
-pytestmark = pytest.mark.skipif(
-    not (SCRIPT.exists() and (ROOT / "TASKS.md").exists()), reason="needs the repository checkout"
-)
+pytestmark = pytest.mark.skipif(not (SCRIPT.exists() and TASK_SHEET.exists()), reason="needs the repository checkout")
 
 
 def _task_commands() -> list[list[str]]:

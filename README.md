@@ -27,7 +27,7 @@ its documentation and the tasks for the students.
 
 | stage | content                                                                                                   | status               |
 |-------|-----------------------------------------------------------------------------------------------------------|----------------------|
-| A     | **Light in the Deep**: the toy telescope, its data, the multi-detector option and the physics tasks T0-T5 ([TASKS.md](TASKS.md)) | this release (0.1.0) |
+| A     | **Light in the Deep**: the toy telescope, its data, the multi-detector option and the physics tasks T0-T5 ([tasks/stage_a/](tasks/stage_a/README.md)) | this release (0.1.0) |
 | B     | Basic machine learning on the toy: features, sets, graphs and attention for direction, energy and type    | next                 |
 | C     | A foundation model on the toy: many detectors in the training set, pretraining, transfer, scaling         | later                |
 | D     | NuBench, the open benchmark for event reconstruction in neutrino telescopes ([arXiv:2511.13111](https://arxiv.org/abs/2511.13111)) | later |
@@ -125,10 +125,11 @@ between water and ice, noise, efficiency, jitter) and spreads the events over th
 
 ## Tasks
 
-[TASKS.md](TASKS.md) holds the tasks of stage A: set-up and the NuBench dictionary (T0), the prior (T1), the light and
-the detector response (T2), the physics ladder (T3), event displays (T4) and a bonus on the way to reconstruction,
-including a first multi-detector data set (T5). `python examples/make_task_data.py` makes their data on any operating
-system.
+[tasks/stage_a/](tasks/stage_a/README.md) holds the tasks of stage A: set-up and the NuBench dictionary (T0), the
+prior (T1), the light and the detector response (T2), the physics ladder (T3), event displays (T4) and a bonus on the
+way to reconstruction, including a first multi-detector data set (T5). `python examples/make_task_data.py` makes their
+data on any operating system. [tasks/README.md](tasks/README.md) lists the tasks stage by stage, with the
+documentation they rely on.
 
 ## Documentation
 

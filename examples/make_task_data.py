@@ -1,8 +1,9 @@
-"""Make the data sets of TASKS.md ("Data for T1 to T5") on any operating system.
+"""Make the data sets of the stage A tasks ("Data for T1 to T5") on any operating system.
 
-The commands are read from the bash block under the heading "Data for T1 to T5" of TASKS.md, so the script and the
-task sheet cannot disagree, and run through the entry point of the command line interface, so they write the same
-files as the commands typed by hand. Run it from anywhere inside the repository::
+The commands are read from the bash block under the heading "Data for T1 to T5" of the task sheet
+``tasks/stage_a/README.md``, so the script and the task sheet cannot disagree, and run through the entry point of the
+command line interface, so they write the same files as the commands typed by hand. Run it from anywhere inside the
+repository::
 
     python examples/make_task_data.py              # every file of the block; files that exist are kept
     python examples/make_task_data.py --overwrite  # make every file again
@@ -21,13 +22,13 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]  # the repository root: every path of TASKS.md is relative to it
-TASKS = ROOT / "TASKS.md"
+ROOT = Path(__file__).resolve().parents[1]  # the repository root: every path of the task sheet is relative to it
+TASK_SHEET = ROOT / "tasks" / "stage_a" / "README.md"
 HEADING = "## Data for T1 to T5"
 
 
-def task_commands(tasks: Path = TASKS) -> list[list[str]]:
-    """Return the ``nutelsim`` commands of the data block of TASKS.md, in order, without the leading ``nutelsim``."""
+def task_commands(tasks: Path = TASK_SHEET) -> list[list[str]]:
+    """Return the ``nutelsim`` commands of the task sheet's data block, in order, without the leading ``nutelsim``."""
     lines = tasks.read_text(encoding="utf-8").splitlines()
     try:
         start = lines.index(HEADING)
@@ -53,7 +54,7 @@ def output_of(command: list[str]) -> Path:
 
 def parse_args() -> argparse.Namespace:
     """Read the command-line options."""
-    parser = argparse.ArgumentParser(description="Make the data sets of TASKS.md (T1 to T5) on any operating system.")
+    parser = argparse.ArgumentParser(description="Make the data sets of stage A (T1 to T5) on any operating system.")
     parser.add_argument("--overwrite", action="store_true", help="make every file again, also those that exist")
     parser.add_argument("--dry-run", action="store_true", help="only print the commands")
     parser.add_argument("--only", metavar="TEXT", help="only the commands whose output file name contains TEXT")
@@ -67,7 +68,7 @@ def main() -> int:
     commands = task_commands()
     if args.only:
         commands = [c for c in commands if args.only in output_of(c).name]
-    print(f"{len(commands)} data sets for TASKS.md, written to {ROOT / 'data'}")
+    print(f"{len(commands)} data sets for {TASK_SHEET.relative_to(ROOT).as_posix()}, written to {ROOT / 'data'}")
     if args.dry_run:
         for command in commands:
             print("nutelsim " + shlex.join(command))
